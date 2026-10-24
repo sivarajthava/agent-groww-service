@@ -126,3 +126,12 @@ def scrub_text(text: str) -> str:
 def find_pii(text: str) -> list[str]:
     """Every PII span the scrubber would redact. Redaction tokens themselves never match."""
     return _scrub(text)[1]
+
+
+def find_pattern_pii(text: str) -> list[str]:
+    """Emails, phones and ids only (no name detection), for short Title-Case labels the NER misreads."""
+    found: list[str] = []
+    for rule, token in _RULES:
+        found += rule.findall(text)
+        text = rule.sub(token, text)
+    return found
