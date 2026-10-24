@@ -11,9 +11,11 @@ dependencies = [
     "google-play-scraper>=1.2.7",
     "groq>=0.30",
     "jsonschema>=4.21",
+    "langdetect>=1.0.9",
     "pydantic>=2.6",
     "pydantic-settings>=2.2",
     "pyyaml>=6.0",
+    "spacy>=3.8",
     "typer>=0.12",
 ]
 
