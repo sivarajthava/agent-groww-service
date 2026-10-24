@@ -1,0 +1,54 @@
+[
+ {
+  "reviewId": "gp:rev-1",
+  "userName": "Test User 1",
+  "userImage": "https://example.invalid/u.png",
+  "content": "The app works well for investing in mutual funds",
+  "score": 5,
+  "thumbsUpCount": 0,
+  "reviewCreatedVersion": "15.2.1",
+  "at": "2026-10-27T09:00:00",
+  "replyContent": null,
+  "repliedAt": null,
+  "appVersion": "15.2.1"
+ },
+ {
+  "reviewId": "gp:rev-2",
+  "userName": "Test User 2",
+  "userImage": "https://example.invalid/u.png",
+  "content": "Withdrawal is stuck for five days now",
+  "score": 1,
+  "thumbsUpCount": 0,
+  "reviewCreatedVersion": "15.2.1",
+  "at": "2026-10-25T23:30:00",
+  "replyContent": null,
+  "repliedAt": null,
+  "appVersion": "15.2.1"
+ },
+ {
+  "reviewId": "gp:rev-3",
+  "userName": "Test User 3",
+  "userImage": "https://example.invalid/u.png",
+  "content": "The app works well for investing in mutual funds",
+  "score": 2,
+  "thumbsUpCount": 0,
+  "reviewCreatedVersion": null,
+  "at": "2026-10-01T10:00:00",
+  "replyContent": null,
+  "repliedAt": null,
+  "appVersion": null
+ },
+ {
+  "reviewId": "gp:rev-4",
+  "userName": "Test User 4",
+  "userImage": "https://example.invalid/u.png",
+  "content": null,
+  "score": 3,
+  "thumbsUpCount": 0,
+  "reviewCreatedVersion": "15.2.1",
+  "at": "2026-09-10T08:00:00",
+  "replyContent": null,
+  "repliedAt": null,
+  "appVersion": "15.2.1"
+ }
+]

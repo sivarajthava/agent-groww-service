@@ -1,0 +1,15 @@
+[
+ {
+  "reviewId": "gp:rev-8",
+  "userName": "Test User 8",
+  "userImage": "https://example.invalid/u.png",
+  "content": "The app works well for investing in mutual funds",
+  "score": 4,
+  "thumbsUpCount": 0,
+  "reviewCreatedVersion": "15.2.1",
+  "at": "2026-08-01T00:00:00",
+  "replyContent": null,
+  "repliedAt": null,
+  "appVersion": "15.2.1"
+ }
+]

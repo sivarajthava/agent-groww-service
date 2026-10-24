@@ -1,0 +1,54 @@
+[
+ {
+  "reviewId": "gp:rev-5",
+  "userName": "Test User 5",
+  "userImage": "https://example.invalid/u.png",
+  "content": "The app works well for investing in mutual funds",
+  "score": 4,
+  "thumbsUpCount": 0,
+  "reviewCreatedVersion": "15.2.1",
+  "at": "2026-08-20T12:00:00",
+  "replyContent": null,
+  "repliedAt": null,
+  "appVersion": "15.2.1"
+ },
+ {
+  "reviewId": "gp:rev-3",
+  "userName": "Test User 3",
+  "userImage": "https://example.invalid/u.png",
+  "content": "The app works well for investing in mutual funds",
+  "score": 2,
+  "thumbsUpCount": 0,
+  "reviewCreatedVersion": null,
+  "at": "2026-10-01T10:00:00",
+  "replyContent": null,
+  "repliedAt": null,
+  "appVersion": null
+ },
+ {
+  "reviewId": "gp:rev-6",
+  "userName": "Test User 6",
+  "userImage": "https://example.invalid/u.png",
+  "content": "Great charts and quick order placement",
+  "score": 5,
+  "thumbsUpCount": 0,
+  "reviewCreatedVersion": "15.2.1",
+  "at": "2026-08-17T00:05:00",
+  "replyContent": null,
+  "repliedAt": null,
+  "appVersion": "15.2.1"
+ },
+ {
+  "reviewId": "gp:rev-7",
+  "userName": "Test User 7",
+  "userImage": "https://example.invalid/u.png",
+  "content": "Older than the window so it is dropped",
+  "score": 1,
+  "thumbsUpCount": 0,
+  "reviewCreatedVersion": "15.2.1",
+  "at": "2026-08-16T22:00:00",
+  "replyContent": null,
+  "repliedAt": null,
+  "appVersion": "15.2.1"
+ }
+]
