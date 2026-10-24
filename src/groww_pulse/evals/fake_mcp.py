@@ -7,6 +7,7 @@ State lives on the returned server object: `docs`, `drafts`, `sent`. Test switch
 """
 
 from collections.abc import Callable
+from itertools import count
 from contextlib import asynccontextmanager
 
 from mcp.server.fastmcp import FastMCP
@@ -17,6 +18,7 @@ def make_fake_server(tools: dict[str, Callable] | None = None) -> FastMCP:
     server = FastMCP("fake-google", log_level="WARNING")
     server.docs, server.drafts, server.sent = {}, {}, []
     server.fail_next, server.lose_response_of, server.fuzzy_search = {}, set(), False
+    doc_ids, draft_ids = count(1), count(1)  # never reused, like real ids, even after a delete
 
     def guard(tool: str) -> None:
         if tool in server.fail_next:
@@ -34,7 +36,7 @@ def make_fake_server(tools: dict[str, Callable] | None = None) -> FastMCP:
 
     def create_document(title: str, content: str) -> dict:
         guard("create_document")
-        doc_id = f"doc{len(server.docs) + 1}"
+        doc_id = f"doc{next(doc_ids)}"
         url = f"https://docs.example.com/d/{doc_id}"
         server.docs[doc_id] = {"title": title, "content": content, "url": url}
         lost("create_document")
@@ -49,13 +51,13 @@ def make_fake_server(tools: dict[str, Callable] | None = None) -> FastMCP:
 
     def list_drafts(query: str) -> dict:
         guard("list_drafts")
-        drafts = [{"draftId": i, "subject": d["subject"]}
+        drafts = [{"draftId": i, "subject": d["subject"], **({"date": d["date"]} if "date" in d else {})}
                   for i, d in server.drafts.items() if server.fuzzy_search or query.lower() in d["subject"].lower()]
         return {"drafts": drafts}
 
     def create_draft(to: str, subject: str, body: str, htmlBody: str) -> dict:
         guard("create_draft")
-        draft_id = f"draft{len(server.drafts) + 1}"
+        draft_id = f"draft{next(draft_ids)}"
         server.drafts[draft_id] = {"to": to, "subject": subject, "body": body, "htmlBody": htmlBody}
         lost("create_draft")
         return {"draftId": draft_id}

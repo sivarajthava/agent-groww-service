@@ -6,7 +6,7 @@ import json
 import numpy as np
 
 from groww_pulse.guards import IMPERATIVE, MAX_NAME_WORDS, has_url
-from groww_pulse.llm import LLMClient, LLMContractError
+from groww_pulse.llm import LLMClient, LLMContractError, RequestTooLarge
 from groww_pulse.prompts import load_prompt
 
 RETRIES = 2  # contract failures (bad JSON, missing clusters, injected labels) are retried this many times
@@ -92,6 +92,8 @@ def _call(llm: LLMClient, prompt: str, user: str, schema: dict, key: str, cluste
             if require_all and missing:
                 raise LLMContractError(f"{prompt}: no label for cluster(s) {sorted(missing)}")
             return labels
+        except RequestTooLarge:
+            raise  # the same prompt would fail again; the caller sends fewer samples
         except LLMContractError:
             if attempt == RETRIES:
                 raise

@@ -4,13 +4,14 @@ import re
 
 import numpy as np
 
-from groww_pulse.llm import LLMClient
+from groww_pulse.llm import LLMClient, RequestTooLarge
 from groww_pulse.models import Review, Theme
 from groww_pulse.normalize.normalize import is_noise
 from groww_pulse.themes.cluster import cluster
 from groww_pulse.themes.label import label_and_merge
 
 OTHER = "other"  # internal bucket for reviews close to no theme; never shown in the pulse
+SAMPLE_BACKOFF = (8, 4)
 MIN_CLUSTER_SIZE = 3  # smaller clusters are outliers, not themes; their reviews are assigned like any other
 
 
@@ -53,14 +54,24 @@ def extract_themes(
     found = sorted(set(labels.tolist()))
     big = [c for c in found if (labels == c).sum() >= MIN_CLUSTER_SIZE]
     big = big or [max(found, key=lambda c: (labels == c).sum())]
-    centroids, sizes, samples = {}, {}, {}
+    centroids, sizes, typical = {}, {}, {}
     for c in big:
         idx = np.flatnonzero(labels == c)
         centroids[c] = _unit(x[idx].mean(axis=0))
         sizes[c] = len(idx)
-        typical = idx[np.argsort(-(x[idx] @ centroids[c]), kind="stable")][:samples_per_cluster]
-        samples[c] = [eligible[i].text for i in typical]
-    names = label_and_merge(samples, previous_names, llm, max_themes, centroids=centroids, sizes=sizes)
+        typical[c] = idx[np.argsort(-(x[idx] @ centroids[c]), kind="stable")]
+    # A request over Groq's size limit is retried with fewer samples per cluster: 15 -> 8 -> 4.
+    sample_counts = [samples_per_cluster] + [n for n in SAMPLE_BACKOFF if n < samples_per_cluster]
+    for n_samples in sample_counts:
+        samples = {c: [eligible[i].text for i in typical[c][:n_samples]] for c in big}
+        try:
+            names = label_and_merge(samples, previous_names, llm, max_themes, centroids=centroids, sizes=sizes)
+            break
+        except RequestTooLarge:
+            if n_samples == sample_counts[-1]:
+                raise
+    if diagnostics is not None:
+        diagnostics["label_samples"] = n_samples
 
     # One centroid per final theme, from all reviews of its clusters.
     theme_of_cluster = {c: names[c] for c in centroids}

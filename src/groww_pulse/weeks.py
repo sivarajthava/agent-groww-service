@@ -1,9 +1,17 @@
 """ISO week <-> date window helpers. The ISO week (YYYY-Www) is the run's idempotency key."""
 
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 _WEEK_RE = re.compile(r"^(\d{4})-W(\d{2})$")
+
+
+IST = timedelta(hours=5, minutes=30)
+
+
+def ist_date(at: datetime) -> date:
+    """The calendar date in India of a naive-UTC timestamp. Weeks and windows are IST calendar weeks."""
+    return (at + IST).date()
 
 
 def current_iso_week(today: date) -> str:

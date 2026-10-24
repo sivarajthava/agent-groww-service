@@ -27,11 +27,12 @@ def test_id_is_salted_hash_of_source_id():
 
 
 def test_drops_out_of_window():
+    # `at` is naive UTC and windows are IST calendar days: IST midnight is 18:30 UTC the day before.
     raws = [
-        _raw("gp:1", "too old to keep, this review is outside the window", at=datetime(2026, 8, 16, 23, 59)),
-        _raw("gp:2", "first day of the window, this review must be kept", at=datetime(2026, 8, 17, 0, 0)),
-        _raw("gp:3", "last day of the window, this review must be kept", at=datetime(2026, 10, 25, 23, 59)),
-        _raw("gp:4", "too new to keep, this review is outside the window", at=datetime(2026, 10, 26, 0, 0)),
+        _raw("gp:1", "too old to keep, this review is outside the window", at=datetime(2026, 8, 16, 18, 29)),
+        _raw("gp:2", "first day of the window, this review must be kept", at=datetime(2026, 8, 16, 18, 30)),
+        _raw("gp:3", "last day of the window, this review must be kept", at=datetime(2026, 10, 25, 18, 29)),
+        _raw("gp:4", "too new to keep, this review is outside the window", at=datetime(2026, 10, 25, 18, 30)),
     ]
     assert [r.text[:9] for r in normalize(raws, SINCE, UNTIL, SALT)] == ["first day", "last day "]
 

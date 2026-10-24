@@ -16,6 +16,18 @@ class LLMContractError(Exception):
     """The model's output was not valid JSON or did not match the requested schema."""
 
 
+class RequestTooLarge(LLMContractError):
+    """The request exceeded the model's size limit (HTTP 413 or a context-length error). Send less, don't retry."""
+
+
+def _too_large(e: Exception) -> bool:
+    if getattr(e, "status_code", None) == 413:
+        return True
+    text = str(e).lower()
+    return isinstance(e, groq.BadRequestError) and any(k in text for k in ("context_length", "context length",
+                                                                           "too large", "maximum context"))
+
+
 @runtime_checkable
 class LLMClient(Protocol):
     def complete_json(self, system: str, user: str, schema: dict, reasoning_effort: str | None = None) -> dict: ...
@@ -64,6 +76,16 @@ class GroqClient:
                 resp = self._groq().chat.completions.create(model=self.model, **kwargs)
                 self.last_model = self.model
                 return self._count(resp)
+            except groq.APIStatusError as e:
+                if _too_large(e):
+                    raise RequestTooLarge(str(e)[:200]) from e
+                if not isinstance(e, RETRYABLE):
+                    raise
+                if attempt == self.max_retries - 1:
+                    if not self.fallback_model:
+                        raise
+                    break
+                self._sleep(2**attempt)
             except RETRYABLE:
                 if attempt == self.max_retries - 1:
                     if not self.fallback_model:

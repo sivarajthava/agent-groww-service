@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -8,8 +8,10 @@ import pytest
 from groww_pulse.ingest.base import ReviewSource
 from groww_pulse.ingest.play_store import PlayStoreCsvSource, PlayStorePublicSource
 from groww_pulse.models import RawReview
+from groww_pulse.weeks import ist_date
 
 FIXTURES = Path(__file__).parent / "fixtures"
+IST = timezone(timedelta(hours=5, minutes=30))
 SINCE, UNTIL = date(2026, 8, 17), date(2026, 10, 25)
 
 
@@ -25,7 +27,9 @@ class FakeFetchPage:
     def _load(n):
         items = json.loads((FIXTURES / f"play_page_{n}.json").read_text(encoding="utf-8"))
         for it in items:
-            it["at"] = datetime.fromisoformat(it["at"])
+            # Fixture times are IST wall clock; the scraper hands out naive *local* time (datetime.fromtimestamp),
+            # so convert to this machine's zone to keep the tests independent of where they run.
+            it["at"] = datetime.fromisoformat(it["at"]).replace(tzinfo=IST).astimezone().replace(tzinfo=None)
         return items
 
     def __call__(self, app_id, **kwargs):
@@ -43,7 +47,7 @@ def _public(fake, sleep=lambda s: None):
 def test_public_source_paginates_until_since():
     fake = FakeFetchPage()
     out = _public(fake).fetch(SINCE, UNTIL)
-    assert all(SINCE <= r.at.date() <= UNTIL for r in out)
+    assert all(SINCE <= ist_date(r.at) <= UNTIL for r in out)  # windows use IST dates
     assert fake.call_count == 2  # page 2 reaches past `since`, page 3 is never requested
 
 
@@ -56,7 +60,7 @@ def test_public_source_maps_fields_and_skips_empty_and_duplicates():
         rating=1,
         title=None,
         text="Withdrawal is stuck for five days now",
-        at=datetime(2026, 10, 25, 23, 30),
+        at=datetime(2026, 10, 25, 18, 0),  # stored as naive UTC: 23:30 IST
         app_version="15.2.1",
         user_name="Test User 2",
     )

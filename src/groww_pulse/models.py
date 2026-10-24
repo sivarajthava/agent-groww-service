@@ -13,7 +13,7 @@ class RawReview:
     rating: int
     title: str | None
     text: str
-    at: datetime
+    at: datetime  # naive UTC; weeks use its IST date (weeks.ist_date)
     app_version: str | None
     user_name: str | None = None
 

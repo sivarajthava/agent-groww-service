@@ -7,8 +7,11 @@ and flags only, never review text.
 
 import asyncio
 import json
+import os
+import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -135,20 +138,30 @@ def _ingest(ctx: RunContext) -> StageResult:
                 ctx.deps.sleep(2**attempt)  # 1 s, then 2 s
             continue
         if items:
-            save_snapshot(s.data_dir, source.name, ctx.today(), items)
-            return StageResult("ingest", True, {"fetched": len(items)})
+            if not getattr(source, "partial", False):
+                save_snapshot(s.data_dir, source.name, ctx.today(), items)
+                return StageResult("ingest", True, {"fetched": len(items)})
+            # Later pages failed: keep what was fetched and fill the rest of the window from the last snapshot.
+            fetched = {r.source_review_id for r in items}
+            merged = items + [r for r in load_latest_snapshot(s.data_dir, SOURCE) or []
+                              if r.source_review_id not in fetched]
+            save_snapshot(s.data_dir, source.name, ctx.today(), merged)
+            return StageResult("ingest", True, {"fetched": len(items), "snapshot": len(merged)}, ["partial_fetch"])
         error = "source returned no reviews"
         break
     snapshot = load_latest_snapshot(s.data_dir, SOURCE)
     if not snapshot:
-        return StageResult("ingest", False, error=f"ingest: {error}; no raw snapshot to fall back to")
+        return StageResult("ingest", False, error=f"no_reviews: {error}; no raw snapshot to fall back to")
     return StageResult("ingest", True, {"fetched": 0, "snapshot": len(snapshot)}, ["source_fallback"])
 
 
-async def _publish_async(ctx: RunContext, markdown: str) -> tuple[str | None, str | None, list[str], list[dict]]:
-    """Docs, then Gmail. A server that is down only loses its own half; a wrong MCP config raises before writes."""
+async def _publish_async(ctx: RunContext, markdown: str):
+    """Docs, then Gmail. A server that is down only loses its own half; a wrong MCP config raises before writes.
+
+    Returns (doc_url, draft_id, flags, mcp_calls, errors); errors are short "<server>: <Error>: <message>" lines.
+    """
     docs_gw, gmail_gw = ctx.gateways()
-    s, flags = ctx.settings, []
+    s, flags, errors = ctx.settings, [], []
     doc_url = draft_id = None
     entered: list[McpGateway] = []
     try:
@@ -158,27 +171,34 @@ async def _publish_async(ctx: RunContext, markdown: str) -> tuple[str | None, st
                 entered.append(gw)
             except MCP_CONFIG_ERRORS:
                 raise
-            except Exception:
+            except Exception as e:
                 flags.append(f"{gw.name}_failed")
+                errors.append(_short(gw.name, e))
         if docs_gw in entered:
             try:
                 _, doc_url = await publish_doc(docs_gw, ctx.week, markdown)
             except MCP_CONFIG_ERRORS:
                 raise
-            except Exception:
+            except Exception as e:
                 flags.append("docs_failed")
+                errors.append(_short("docs", e))
         if gmail_gw in entered:
             try:
                 draft_id = await upsert_draft(gmail_gw, ctx.week, s.recipient, markdown, render_html(markdown),
                                               doc_url)
             except MCP_CONFIG_ERRORS:
                 raise
-            except Exception:
+            except Exception as e:
                 flags.append("gmail_failed")
+                errors.append(_short("gmail", e))
     finally:
         for gw in reversed(entered):
             await gw.__aexit__(None, None, None)
-    return doc_url, draft_id, flags, docs_gw.calls + gmail_gw.calls
+    return doc_url, draft_id, flags, docs_gw.calls + gmail_gw.calls, errors
+
+
+def _short(server: str, e: Exception) -> str:
+    return f"{server}: {type(e).__name__}: {e}"[:300]
 
 
 def _publish(ctx: RunContext) -> StageResult:
@@ -190,7 +210,7 @@ def _publish(ctx: RunContext) -> StageResult:
         return StageResult("publish", False, error="publish: no validated pulse.md for this week; run the pulse stage")
     markdown = pulse_md.read_text(encoding="utf-8")
     try:
-        doc_url, draft_id, flags, calls = asyncio.run(_publish_async(ctx, markdown))
+        doc_url, draft_id, flags, calls, errors = asyncio.run(_publish_async(ctx, markdown))
     except MCP_CONFIG_ERRORS as e:
         gws = ctx.deps.gateways or ()
         run["mcp_calls"] = [c for gw in gws for c in gw.calls]
@@ -198,7 +218,7 @@ def _publish(ctx: RunContext) -> StageResult:
         return StageResult("publish", False, error=f"publish: {type(e).__name__}: {e}")
     # This publish's outcome replaces an earlier attempt's docs_failed / gmail_failed flags.
     kept = [f for f in run.get("flags", []) if not f.endswith("_failed")]
-    run.update(doc_url=doc_url, draft_id=draft_id, mcp_calls=calls, flags=kept)
+    run.update(doc_url=doc_url, draft_id=draft_id, mcp_calls=calls, flags=kept, publish_errors=errors)
     write_run_json(ctx, run)
     with Database(db_path(ctx.settings)) as db:
         db.record_run(ctx.week, "publishing", doc_url=doc_url, draft_id=draft_id)
@@ -226,7 +246,9 @@ def run_stage(ctx: RunContext, stage: str) -> StageResult:
                 return StageResult(stage, True, _ints(res), list(res["flags"]))
             res = pulse_stage(s, ctx.week, db, ctx.llm())
             return StageResult(stage, True, _ints(res))
-    except (StageError, NotEnoughQuotes, ValidationFailed, LLMContractError) as e:
+    except StageError as e:
+        return StageResult(stage, False, error=str(e) if e.code else f"{stage}: {e}")
+    except (NotEnoughQuotes, ValidationFailed, LLMContractError) as e:
         return StageResult(stage, False, error=f"{stage}: {e}")
     except groq.GroqError as e:  # retries and the fallback model are exhausted, or no API key
         return StageResult(stage, False, error=f"{stage}: llm_unavailable ({type(e).__name__})")
@@ -247,13 +269,60 @@ def run_pipeline(
 ) -> RunResult:
     if from_stage not in STAGES:
         raise ValueError(f"unknown stage {from_stage!r}; stages are {', '.join(STAGES)}")
-    ctx = RunContext(settings, week, RunDeps(source, llm, embedder, gateways, today, sleep))
     stages = [st for st in STAGES[STAGES.index(from_stage):] if not (dry_run and st == "publish")]
+    if llm is None and {"themes", "pulse"} & set(stages) and not os.environ.get("GROQ_API_KEY"):
+        # Before any fetch: a run that can't reach Groq would only fail later, after downloading reviews.
+        return RunResult(week, "failed", None, None, None, [], "config: GROQ_API_KEY is not set (add it to .env)")
+    try:
+        with run_lock(settings, week):
+            return _run_locked(settings, week, stages, dry_run,
+                               RunContext(settings, week, RunDeps(source, llm, embedder, gateways, today, sleep)))
+    except RunLocked as e:
+        return RunResult(week, "failed", None, None, None, [], str(e))
+
+
+class RunLocked(Exception):
+    pass
+
+
+@contextmanager
+def run_lock(settings: Settings, week: str) -> Iterator[None]:
+    """An OS file lock on data/runs/<week>/.lock: one run per week at a time. Released if the process dies."""
+    path = run_dir(settings, week) / ".lock"
+    with open(path, "a+b") as f:
+        try:
+            if sys.platform == "win32":
+                import msvcrt
+
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise RunLocked(f"locked: another run for {week} is in progress ({path})") from None
+        try:
+            yield
+        finally:
+            if sys.platform == "win32":
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def _run_locked(settings: Settings, week: str, stages: list[str], dry_run: bool, ctx: RunContext) -> RunResult:
     flags: list[str] = []
     error = None
+    timings: dict[str, float] = {}
+    stage_counts: dict[str, dict[str, int]] = {}
     try:
         for stage in stages:
+            start = time.perf_counter()
             result = run_stage(ctx, stage)
+            timings[stage] = round(time.perf_counter() - start, 3)
+            stage_counts[stage] = result.counts
             flags += [f for f in result.flags if f not in flags]
             if not result.ok:
                 error = result.error
@@ -270,7 +339,8 @@ def run_pipeline(
     else:
         status = "ok" if "publish" in stages else "dry_run"
     run = read_run_json(ctx)
-    run.update(status=status, flags=sorted(set(run.get("flags", [])) | set(flags)), error=error)
+    run.update(status=status, flags=sorted(set(run.get("flags", [])) | set(flags)), error=error,
+               timings=timings, stages=stage_counts)  # counts per stage (never text) and seconds per stage
     write_run_json(ctx, run)
     with Database(db_path(settings)) as db:
         db.record_run(week, status)

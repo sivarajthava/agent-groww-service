@@ -14,3 +14,17 @@ MAX_NAME_WORDS = 5
 
 def has_url(text: str) -> bool:
     return bool(URL_LIKE.search(text))
+
+
+# Review text that carries markup or reads as instructions to a model never becomes a quote.
+MARKUP = re.compile(r"<\s*/?\s*[a-z!]|\*\*|__|\]\(|`")
+INJECTION_LIKE = re.compile(
+    r"\b(?:ignore|disregard|forget)\b.{0,40}\b(?:instructions?|rules?|above|format|limits?)\b|\bsystem\s*:|"
+    r"\byou are now\b|\bpretend (?:you are|to be)\b|\brespond in\b|\bin (?:your|the) (?:summary|report|output)\b|"
+    r"\b(?:give|list|write)\s+(?:five|5|ten|10)\b|\blabel every\b|\breturn an? (?:empty )?json\b",
+    re.IGNORECASE,
+)
+
+
+def unsafe_for_quote(text: str) -> bool:
+    return has_url(text) or bool(MARKUP.search(text) or INJECTION_LIKE.search(text))

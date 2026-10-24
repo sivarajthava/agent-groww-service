@@ -34,14 +34,21 @@ from groww_pulse.storage.raw import load_latest_snapshot
 from groww_pulse.themes.extract import extract_themes
 from groww_pulse.themes.quotes import NotEnoughQuotes, select_quotes
 from groww_pulse.themes.rank import rank_themes, weekly_delta
-from groww_pulse.weeks import current_iso_week, week_window
+from groww_pulse.weeks import current_iso_week, ist_date, week_window
 
 SOURCE = "play_store"
 PROMPTS = ("label_themes", "merge_themes", "write_pulse")
 
 
 class StageError(Exception):
-    """A stage can't run: missing input from an earlier stage, or too little data."""
+    """A stage can't run: missing input from an earlier stage, or too little data.
+
+    `code` (e.g. "no_reviews") leads the message, so run.json and the CLI show a stable reason.
+    """
+
+    def __init__(self, message: str, code: str | None = None):
+        super().__init__(f"{code}: {message}" if code else message)
+        self.code = code
 
 
 def db_path(settings: Settings) -> Path:
@@ -75,7 +82,7 @@ def normalize_stage(settings: Settings, week: str, db: Database) -> dict:
     # Rows an earlier run stored for snapshot reviews the current rules drop (e.g. too short once a name is
     # redacted) would otherwise keep their old text; rows from other snapshots are left alone.
     kept = {r.id for r in reviews}
-    removed = db.delete_reviews([rid for r in raw if since <= r.at.date() <= until
+    removed = db.delete_reviews([rid for r in raw if since <= ist_date(r.at) <= until
                                  and (rid := review_id(settings.id_salt, r.source_review_id)) not in kept])
     langs = Counter(r.lang for r in reviews)
     return {"raw": len(raw), "kept": len(reviews), "new": new, "removed": removed,
@@ -104,7 +111,8 @@ def themes_stage(settings: Settings, week: str, db: Database, embedder, llm: LLM
     """Extract ≤ max_themes themes, rank them, pick 3 verbatim quotes; store themes, assignments and quotes."""
     window, reviews, flags = choose_window(settings, week, db)
     if not reviews:
-        raise StageError(f"no reviews in SQLite for {window[0]}..{window[1]}; run the normalize stage first")
+        raise StageError(f"no reviews in SQLite for {window[0]}..{window[1]}; run the normalize stage first",
+                         "no_reviews")
     diagnostics: dict = {}
     themes, centroids, emb = extract_themes(
         reviews, embedder, llm, db.previous_theme_names(week), max_themes=settings.max_themes,
@@ -112,7 +120,8 @@ def themes_stage(settings: Settings, week: str, db: Database, embedder, llm: LLM
         diagnostics=diagnostics,
     )
     if not themes:
-        raise StageError("no themes found (no English reviews in the window)")
+        raise StageError(f"no English reviews in {window[0]}..{window[1]} to build themes from "
+                         f"({len(reviews)} reviews in other languages)", "no_english_reviews")
     themes = weekly_delta(themes, {r.id: r for r in reviews}, week)
     db.save_themes(week, themes)
     db.save_assignments(week, [

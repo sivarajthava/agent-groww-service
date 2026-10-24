@@ -161,9 +161,15 @@ async def find_exact(gw: McpGateway, action: str, args: dict, key: str, value: s
     Search tools match loosely, so only an exact match counts. Items are the result itself and every dict in
     its list values, e.g. {"documents": [...]}.
     """
+    matches = await find_all_exact(gw, action, args, key, value)
+    return matches[0] if matches else None
+
+
+async def find_all_exact(gw: McpGateway, action: str, args: dict, key: str, value: str) -> list[dict]:
+    """Every result item whose `key` equals `value` exactly, in the server's order."""
     result = await gw.call(action, args, retries=2)
     items = [result] + [i for v in result.values() if isinstance(v, list) for i in v if isinstance(i, dict)]
-    return next((i for i in items if i.get(key) == value and i.get("id")), None)
+    return [i for i in items if i.get(key) == value and i.get("id")]
 
 
 def _text(result) -> str | None:

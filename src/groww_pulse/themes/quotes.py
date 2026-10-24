@@ -4,6 +4,7 @@ import re
 
 import numpy as np
 
+from groww_pulse.guards import unsafe_for_quote
 from groww_pulse.models import Quote, Review, Theme
 from groww_pulse.privacy.scrubber import HINGLISH_WORDS
 
@@ -43,7 +44,7 @@ def is_code_mixed(text: str) -> bool:
 
 
 def _quote_text(r: Review) -> str | None:
-    if r.lang != "en" or is_code_mixed(r.text):
+    if r.lang != "en" or is_code_mixed(r.text) or unsafe_for_quote(r.text):
         return None
     text = trim_to_span(r.text)
     return text if MIN_QUOTE_WORDS <= len(text.split()) <= MAX_QUOTE_WORDS else None

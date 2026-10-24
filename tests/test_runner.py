@@ -141,7 +141,7 @@ def test_source_failure_falls_back_to_snapshot(settings, server):
 
 def test_source_failure_without_snapshot_fails(settings, server):
     result = run(settings, server, source=ListSource(error=ConnectionError("down")))
-    assert result.status == "failed" and "ingest" in result.error
+    assert result.status == "failed" and result.error.startswith("no_reviews")
     assert server.docs == {} and server.drafts == {}
     assert run_json(settings)["status"] == "failed"
 
@@ -178,7 +178,7 @@ def test_misconfigured_mcp_fails_before_any_write(settings, server):
 
 def test_run_json_contains_no_pii(settings, server):
     run(settings, server)
-    files = [p for p in (settings.data_dir / "runs" / WEEK).iterdir() if p.is_file()]
+    files = [p for p in (settings.data_dir / "runs" / WEEK).iterdir() if p.is_file() and p.name != ".lock"]
     assert {p.name for p in files} == {"themes.json", "quotes.json", "pulse.md", "run.json"}
     for p in files:
         text = p.read_text(encoding="utf-8")

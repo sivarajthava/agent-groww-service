@@ -9,6 +9,7 @@ from datetime import date
 from langdetect import DetectorFactory, LangDetectException, detect
 
 from groww_pulse.models import RawReview, Review
+from groww_pulse.weeks import ist_date
 from groww_pulse.privacy.scrubber import HINGLISH_WORDS, redact_user_name, scrub_text
 
 DetectorFactory.seed = 0  # langdetect is randomised; a fixed seed makes tags reproducible
@@ -83,7 +84,7 @@ def normalize(
     seen_ids: set[str] = set()
     seen_texts: set[str] = set()
     for r in raw:
-        day = r.at.date()
+        day = ist_date(r.at)
         if not since <= day <= until:
             continue
         rid = review_id(salt, r.source_review_id)
