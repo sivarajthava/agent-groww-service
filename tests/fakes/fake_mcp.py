@@ -3,6 +3,7 @@
 State lives on the returned server object: `docs`, `drafts`, `sent`. Test switches:
 - `fail_next[tool] = exc`: the next call of that tool raises `exc` (the client sees an isError result).
 - `lose_response_of = {tool}`: the tool performs its write, then fails as if the response was lost.
+- `fuzzy_search = True`: searches return every doc/draft, like a real full-text search with loose matches.
 """
 
 from collections.abc import Callable
@@ -15,7 +16,7 @@ from mcp.shared.memory import create_connected_server_and_client_session
 def make_fake_server(tools: dict[str, Callable] | None = None) -> FastMCP:
     server = FastMCP("fake-google")
     server.docs, server.drafts, server.sent = {}, {}, []
-    server.fail_next, server.lose_response_of = {}, set()
+    server.fail_next, server.lose_response_of, server.fuzzy_search = {}, set(), False
 
     def guard(tool: str) -> None:
         if tool in server.fail_next:
@@ -28,7 +29,7 @@ def make_fake_server(tools: dict[str, Callable] | None = None) -> FastMCP:
     def search_documents(query: str) -> dict:
         guard("search_documents")
         docs = [{"documentId": i, "title": d["title"], "url": d["url"]}
-                for i, d in server.docs.items() if query.lower() in d["title"].lower()]
+                for i, d in server.docs.items() if server.fuzzy_search or query.lower() in d["title"].lower()]
         return {"documents": docs}
 
     def create_document(title: str, content: str) -> dict:
@@ -49,7 +50,7 @@ def make_fake_server(tools: dict[str, Callable] | None = None) -> FastMCP:
     def list_drafts(query: str) -> dict:
         guard("list_drafts")
         drafts = [{"draftId": i, "subject": d["subject"]}
-                  for i, d in server.drafts.items() if query.lower() in d["subject"].lower()]
+                  for i, d in server.drafts.items() if server.fuzzy_search or query.lower() in d["subject"].lower()]
         return {"drafts": drafts}
 
     def create_draft(to: str, subject: str, body: str, htmlBody: str) -> dict:

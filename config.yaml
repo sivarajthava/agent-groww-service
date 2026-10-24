@@ -33,7 +33,8 @@ mcp:
     command: npx
     args: ["-y", "<google-docs-mcp-server>"]
     tools:
-      find_doc:   {name: search_documents, args: {title: query}}
+      find_doc:   {name: search_documents, args: {title: query},
+                   result: {id: documentId, url: url}}
       create_doc: {name: create_document,  args: {title: title, body: content},
                    result: {id: documentId, url: url}}
       update_doc: {name: update_document,  args: {doc_id: documentId, body: content}}
@@ -43,7 +44,7 @@ mcp:
     url: "https://<gmail-mcp-host>/mcp"
     header_env: {Authorization: GMAIL_MCP_AUTH}   # env var name, not the value
     tools:
-      list_drafts:  {name: list_drafts,  args: {subject: query}}
+      list_drafts:  {name: list_drafts,  args: {subject: query}, result: {id: draftId}}
       create_draft: {name: create_draft, args: {to: to, subject: subject, body: body, html: htmlBody},
                      result: {id: draftId}}
       update_draft: {name: update_draft, args: {draft_id: draftId, body: body, html: htmlBody}}
