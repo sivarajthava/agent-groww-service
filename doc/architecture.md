@@ -42,7 +42,7 @@ flowchart TB
         RANK["Rank themes → top 3<br/>0.6·share + 0.3·neg + 0.1·growth"]
         QS["Pick 3 verbatim quotes<br/>closest to theme centroid"]
         EMB{{"all-MiniLM-L6-v2<br/>384-d vectors"}}
-        KM{{"KMeans<br/>k chosen by silhouette"}}
+        KM{{"KMeans<br/>fixed k = 8"}}
     end
 
     subgraph GROQ["GROQ API · remote · receives scrubbed text only"]
@@ -119,7 +119,7 @@ The system is a **linear batch pipeline** made of small, testable stages. Every 
 | Language | Python 3.11+ | Good libraries for NLP, scraping exports and MCP clients |
 | LLM / reasoning | Groq API via the `groq` Python SDK. Default `openai/gpt-oss-120b` (Groq's largest reasoning model), with `openai/gpt-oss-20b` as a cheaper fallback. Model id is set in config | Fast, low-cost inference with a configurable reasoning effort. Supports strict JSON-schema structured outputs, which every LLM stage relies on (§4.7) |
 | Embeddings | `sentence-transformers` (`all-MiniLM-L6-v2`), run locally | Free and fast. Review text is not sent to a third-party embedding API |
-| Clustering | scikit-learn KMeans (k from 3–8, picked by silhouette score), then LLM labeling and merging down to ≤ 5 themes | Data-driven groups that people can read |
+| Clustering | scikit-learn KMeans (fixed k = 8 from config), then LLM labeling and merging down to ≤ 5 themes | Data-driven groups that people can read |
 | Storage | SQLite + JSON snapshots | No setup, can be inspected, works for re-runs |
 | MCP client | `mcp` Python SDK (`ClientSession` over stdio or streamable HTTP), wrapped in our own `McpGateway` (§4.9) | One interface to the Docs and Gmail MCP servers, with the capability map and allowlist enforced in code |
 | Agent (optional) | A custom tool-calling loop on Groq (`agent/`, §4.10). No agent framework | Small, testable and bounded. The same tools and guardrails as the runner |
@@ -137,7 +137,7 @@ The system is a **linear batch pipeline** made of small, testable stages. Every 
 | 4 | `en_core_web_sm` (spaCy) | Named-entity recognition (NER) | Local | PII scrubber, PII re-scan | Finds person names in review text and replaces them with `[name]`, before storage and again on the final pulse |
 | 5 | `langdetect` | Statistical language classifier | Local | Normalization | Tags each review's language, so only English reviews are clustered or quoted. Adds a rule: > 30% Devanagari characters → `hi` |
 
-KMeans (scikit-learn) is an algorithm, not a trained model. It groups the MiniLM vectors, and the number of clusters is picked by silhouette score.
+KMeans (scikit-learn) is an algorithm, not a trained model. It groups the MiniLM vectors into a fixed number of clusters (`cluster_k_min`/`cluster_k_max`, both 8 by default). On real Groww reviews the silhouette score is flat (0.03–0.05 for every k from 3 to 14), so it can't pick k, and k = 8 is the most stable choice across seeds (implementation plan, Phase 3 findings F3/F4). When the range is wider than one value, silhouette still picks within it.
 
 **What the LLM never does:**
 
@@ -173,7 +173,7 @@ sequenceDiagram
     R->>EMB: English, non-noise reviews
     EMB-->>R: L2-normalized vectors
     R->>KM: vectors
-    KM-->>R: cluster labels (best k by silhouette)
+    KM-->>R: cluster labels (k = 8)
 
     R->>G1: label call: ~15 samples per cluster + previous theme names
     alt 120b fails after 3 retries
@@ -278,7 +278,7 @@ A two-phase hybrid approach: **statistical grouping, then LLM labeling**.
 ```mermaid
 flowchart TD
     A[Clean reviews] --> B[Embed text<br/>MiniLM]
-    B --> C[Cluster<br/>HDBSCAN / KMeans]
+    B --> C[Cluster<br/>KMeans, k = 8]
     C --> D[Sample 15 reviews<br/>per cluster]
     D --> E[LLM: name + describe<br/>each cluster]
     E --> F{More than 5 clusters?}
@@ -288,8 +288,9 @@ flowchart TD
     H --> I[Assign every review<br/>to nearest theme centroid]
 ```
 
-- **Taxonomy hints** (they guide the labels but are not enforced): Onboarding & KYC, Payments & Fund Transfer, Withdrawals & Settlements, Statements & Reports, App Performance & Bugs, Customer Support, Charges & Fees, Trading/Order Execution, Mutual Funds/SIP, IPO.
-- **Hard cap:** the result has at most 5 themes. Leftover reviews go to the nearest theme. If none is close (similarity < threshold), they go to an internal `Other` bucket that is never shown in the pulse.
+- **Taxonomy hints** (they guide the labels but are not enforced): Onboarding & KYC, Payments & Fund Transfer, Withdrawals & Settlements, Statements & Reports, App Performance & Bugs, Customer Support, Charges & Fees, Trading/Order Execution, Charts & Indicators, Mutual Funds/SIP, IPO, Feature Requests, Ease of Use & Praise. The last three come from the real reviews: charts are 8% of English reviews, and generic praise is about a third.
+- **One praise theme:** the prompts give every generic-praise cluster the single name `Ease of Use & Praise`, so praise takes at most one of the 5 themes.
+- **Hard cap:** the result has at most 5 themes. Leftover reviews go to the nearest theme. If none is close (cosine similarity below `other_threshold`, 0.3 by default), they go to an internal `Other` bucket that is never shown in the pulse. `themes.json` records `k` and `other_count`.
 - **Stability:** last week's theme names are passed to the labeling prompt. If a theme is semantically the same, it keeps its name, so trends can be compared week to week.
 
 Output:
@@ -305,16 +306,18 @@ class Theme:
     share: float              # count / total
     avg_rating: float
     neg_share: float          # share of 1–2★ reviews
-    wow_delta: float | None   # change vs. previous week
+    wow_delta: float | None   # share in the run's ISO week minus share in the week before
 ```
 
 ### 4.5 Theme Ranking (`themes/rank.py`)
 
 ```
-score = 0.6 * share + 0.3 * neg_share + 0.1 * max(wow_delta, 0)
+score = 0.4 * share + 0.5 * neg_share + 0.1 * max(wow_delta, 0)
 ```
 
-Themes are sorted by `score` and the **top 3** go to the pulse. The weights are configurable. Weighting negative reviews makes painful issues rank above the many generic "nice app" reviews.
+Themes are sorted by `score` and the **top 3** go to the pulse. The weights are configurable (`rank_weights`). Weighting negative reviews makes painful issues rank above the many generic "nice app" reviews. On real data, the earlier weights (0.6, 0.3, 0.1) let a merged praise theme (37% of reviews) take third place, while (0.4, 0.5, 0.1) rank it sixth.
+
+`wow_delta` is the theme's share of the reviews dated in the run's ISO week minus its share of the reviews dated in the week before, both inside the current window. Comparing two consecutive 10-week windows would always give about 0, because they share 9 weeks. It is `None` when either week has fewer than 20 reviews.
 
 ### 4.6 Quote Selection (`themes/quotes.py`)
 
@@ -805,7 +808,7 @@ Each case runs **the whole pipeline** with fakes, in dry-run unless the case is 
 | **Text** | A 5,000-character review · Markdown/HTML/links inside a review · a review that is only PII · a quote containing a redaction token | Trimmed to ≤ 40 contiguous words. Escaped in Markdown and HTML, and the URL check catches links. A PII-only review is fully redacted and becomes noise. A redaction token passes the fidelity check |
 | **Dedup** | The same review on two scraper pages · copy-paste spam ×50 | Collapsed to one, so the counts aren't inflated |
 | **Dates** | Sunday 23:59 IST (already Monday in UTC) · year boundary / ISO week 53 (`2026-W53` → `2027-W01`) | Week assignment uses IST. Window bounds are inclusive. The Doc title and subject use the correct ISO week |
-| **History** | No previous week · a theme renamed last week | `wow_delta = None` and ranking still works. Names are reused through `previous_names`, and the live eval checks stability |
+| **History** | No previous week · a theme renamed last week · fewer than 20 reviews in a week | `wow_delta = None` and ranking still works. Names are reused through `previous_names`, and the live eval checks stability |
 | **LLM** | Every cluster given the same name · Groq 429/5xx on every call · request too large (413) · injection reviews | Merged into one theme, then a reduced pulse or `NotEnoughQuotes`. Retries, then the 20b fallback, then `failed` (`llm_unavailable`) with nothing published. Samples per cluster cut 15 → 8 → 4 and retried. Injected text is rejected by the validators |
 | **Source** | The scraper fails on page 2 · CSV with a BOM, extra columns or a missing column | Page-1 data kept, retries, then the snapshot fallback, flag `partial_fetch`. CSV is parsed, and a missing required column gives an error naming it |
 | **MCP** | Non-JSON tool result · 2 drafts with the same subject · Doc deleted by hand · stdio server crash · `send` allowlisted by mistake | Read as `{"text": …}` and parsed with the `result` map. The newest draft is updated, a warning is logged, and no third draft is made. A new Doc is created and its URL recorded. `McpCallError`, the session is closed, status `partial`, no zombie process. Config validation rejects the `send` tool at startup |

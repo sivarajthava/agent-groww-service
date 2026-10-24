@@ -5,9 +5,12 @@ import re
 import numpy as np
 
 from groww_pulse.models import Quote, Review, Theme
+from groww_pulse.privacy.scrubber import HINGLISH_WORDS
 
 MIN_QUOTE_WORDS, MAX_QUOTE_WORDS = 8, 40
 QUOTE_COUNT = 3  # the pulse always has exactly 3 quotes, even with fewer than 3 themes
+# Hinglish words that are also English words or common typos ("aap" for app) in English reviews.
+ENGLISH_COLLISIONS = frozenset({"aap", "tab", "ho", "pe", "par", "se", "mat", "bas", "din", "ham", "ji", "jo", "ab"})
 _SENTENCE_END = re.compile(r"[.!?]+[\"')\]]*(?=\s|$)")
 
 
@@ -34,8 +37,13 @@ def trim_to_span(text: str, max_words: int = MAX_QUOTE_WORDS) -> str:
     return text[:best].rstrip() + "…"
 
 
+def is_code_mixed(text: str) -> bool:
+    """True when English-tagged text contains Hinglish (langdetect lets short code-mixed reviews through)."""
+    return any(w in HINGLISH_WORDS and w not in ENGLISH_COLLISIONS for w in re.findall(r"[a-z]+", text.lower()))
+
+
 def _quote_text(r: Review) -> str | None:
-    if r.lang != "en":
+    if r.lang != "en" or is_code_mixed(r.text):
         return None
     text = trim_to_span(r.text)
     return text if MIN_QUOTE_WORDS <= len(text.split()) <= MAX_QUOTE_WORDS else None

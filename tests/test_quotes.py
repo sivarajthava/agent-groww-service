@@ -6,7 +6,7 @@ from groww_pulse.llm import FakeLLM
 from groww_pulse.models import Theme
 from groww_pulse.themes.embed import HashEmbedder
 from groww_pulse.themes.extract import extract_themes
-from groww_pulse.themes.quotes import NotEnoughQuotes, select_quotes, trim_to_span
+from groww_pulse.themes.quotes import NotEnoughQuotes, is_code_mixed, select_quotes, trim_to_span
 from test_extract import distinct_labeler
 
 # --- trim_to_span ----------------------------------------------------------------------------
@@ -144,3 +144,34 @@ def test_reduced_pulse_takes_three_quotes_from_fewer_themes():
     by_id, emb, cents = _setup(reviews, [t])
     quotes = select_quotes([t], by_id, emb, cents)
     assert len({q.review_id for q in quotes}) == 3 and {q.theme_id for q in quotes} == {"a"}
+
+
+CODE_MIXED = "Bank nifty ka details not clear, I am facing losses every single day"
+TYPO_AAP = "worst aap for trading, when buying it always shows a higher price"
+
+
+def test_is_code_mixed_ignores_english_collisions():
+    """F7: Hinglish words mark code-mixed text; `aap` (a typo of app), tab, ho, pe, se ... don't."""
+    assert is_code_mixed(CODE_MIXED)
+    assert is_code_mixed("App bahut slow hai since the last update, please fix it")
+    assert not is_code_mixed(TYPO_AAP)
+    assert not is_code_mixed("Charts open in a new tab, the pe ratio page lags and the se and ho labels overlap")
+    assert not is_code_mixed(LONG_NEG)
+
+
+def test_code_mixed_review_never_quoted():
+    """Review Focus #1 / F7: a code-mixed review tagged lang=en never becomes a quote."""
+    reviews = [make_review("a1", CODE_MIXED, 1), make_review("a2", LONG_NEG, 1),
+               make_review("a3", LONG_NEG + " again", 1)]
+    t = _theme("a", ["a1", "a2", "a3"])
+    by_id, emb, cents = _setup(reviews, [t])
+    with pytest.raises(NotEnoughQuotes, match="2 of 3"):
+        select_quotes([t], by_id, emb, cents)
+
+
+def test_english_typo_aap_still_quotable():
+    reviews = [make_review("a1", TYPO_AAP, 1), make_review("a2", LONG_NEG, 1),
+               make_review("a3", LONG_NEG + " again", 1)]
+    t = _theme("a", ["a1", "a2", "a3"])
+    by_id, emb, cents = _setup(reviews, [t])
+    assert "a1" in {q.review_id for q in select_quotes([t], by_id, emb, cents)}

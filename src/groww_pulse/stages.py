@@ -33,7 +33,7 @@ from groww_pulse.storage.db import Database
 from groww_pulse.storage.raw import load_latest_snapshot
 from groww_pulse.themes.extract import extract_themes
 from groww_pulse.themes.quotes import NotEnoughQuotes, select_quotes
-from groww_pulse.themes.rank import rank_themes, with_wow_delta
+from groww_pulse.themes.rank import rank_themes, weekly_delta
 from groww_pulse.weeks import current_iso_week, week_window
 
 SOURCE = "play_store"
@@ -105,13 +105,15 @@ def themes_stage(settings: Settings, week: str, db: Database, embedder, llm: LLM
     window, reviews, flags = choose_window(settings, week, db)
     if not reviews:
         raise StageError(f"no reviews in SQLite for {window[0]}..{window[1]}; run the normalize stage first")
+    diagnostics: dict = {}
     themes, centroids, emb = extract_themes(
         reviews, embedder, llm, db.previous_theme_names(week), max_themes=settings.max_themes,
-        k_min=settings.cluster_k_min, k_max=settings.cluster_k_max,
+        other_threshold=settings.other_threshold, k_min=settings.cluster_k_min, k_max=settings.cluster_k_max,
+        diagnostics=diagnostics,
     )
     if not themes:
         raise StageError("no themes found (no English reviews in the window)")
-    themes = with_wow_delta(themes, db.previous_themes(week))
+    themes = weekly_delta(themes, {r.id: r for r in reviews}, week)
     db.save_themes(week, themes)
     db.save_assignments(week, [
         (rid, t.id, round(float(np.dot(emb[rid], centroids[t.id])), 4)) for t in themes for rid in t.review_ids
@@ -128,6 +130,8 @@ def themes_stage(settings: Settings, week: str, db: Database, embedder, llm: LLM
         "total_reviews": len(reviews),
         "avg_rating": round(sum(r.rating for r in reviews) / len(reviews), 2),
         "flags": flags,
+        "k": diagnostics.get("k", 0),
+        "other_count": len(emb) - sum(t.count for t in themes),  # clustered reviews no theme was close to
         "top": [t.id for t in top],
         # review_ids stay in SQLite (review_themes); the JSON holds stats only
         "themes": [{k: v for k, v in asdict(t).items() if k != "review_ids"} for t in themes],

@@ -13,12 +13,15 @@ cluster is about.
 - If a theme is semantically the same as one of the previous week's theme names, reuse that name exactly,
   so trends can be compared week to week.
 - Give two clusters the same name only if they are clearly the same theme.
+- Clusters of generic praise (easy to use, good for beginners, nice app, smooth experience) all get the name
+  `Ease of Use & Praise`, even when they look slightly different. Praise that names a specific feature does too.
 - Never include names, phone numbers, emails, ids or quotes from the reviews.
 
 ## Taxonomy hints
 
 These are typical Groww themes. Use them as guidance, not as a fixed list:
 Onboarding & KYC, Payments & Fund Transfer, Withdrawals & Settlements, Statements & Reports,
-App Performance & Bugs, Customer Support, Charges & Fees, Trading/Order Execution, Mutual Funds/SIP, IPO.
+App Performance & Bugs, Customer Support, Charges & Fees, Trading/Order Execution, Charts & Indicators,
+Mutual Funds/SIP, IPO, Feature Requests, Ease of Use & Praise.
 
 Respond with JSON only, matching the schema.

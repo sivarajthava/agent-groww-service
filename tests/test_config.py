@@ -44,8 +44,9 @@ def test_minimal_config_loads_with_defaults(tmp_path):
     assert s.window_weeks == 10 and s.max_window_weeks == 12
     assert s.max_themes == 5
     assert s.min_words == 8
-    assert (s.cluster_k_min, s.cluster_k_max) == (6, 10)
-    assert s.rank_weights == (0.6, 0.3, 0.1)
+    assert (s.cluster_k_min, s.cluster_k_max) == (8, 8)
+    assert s.rank_weights == (0.4, 0.5, 0.1)
+    assert s.other_threshold == 0.3
     assert s.model == "openai/gpt-oss-120b"
     assert s.fallback_model == "openai/gpt-oss-20b"
     assert s.id_salt == "test-salt"
@@ -144,3 +145,18 @@ def test_stdio_server_requires_command(tmp_path):
     yaml = MINIMAL_MCP_YAML.replace("    command: npx\n", "")
     with pytest.raises(ValidationError, match="command"):
         load_settings(_write(tmp_path, "recipient: a@b.c\n" + yaml))
+
+
+def test_config_uses_data_tuned_defaults():
+    """Task 3.5 (F3-F5, F9): fixed k = 8, issue-weighted ranking, a working `other` threshold."""
+    s = load_settings(Path(__file__).parent.parent / "config.yaml")
+    assert (s.cluster_k_min, s.cluster_k_max) == (8, 8)
+    assert s.rank_weights == (0.4, 0.5, 0.1)
+    assert s.other_threshold == 0.3
+
+
+@pytest.mark.parametrize("bad", ["1.0", "-0.1"])
+def test_settings_rejects_other_threshold_outside_0_1(tmp_path, bad):
+    p = _write(tmp_path, f"other_threshold: {bad}\nrecipient: a@b.c\n" + MINIMAL_MCP_YAML)
+    with pytest.raises(ValidationError, match="other_threshold"):
+        load_settings(p)

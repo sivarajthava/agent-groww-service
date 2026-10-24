@@ -179,6 +179,23 @@ def test_default_k_range_is_6_to_10(topic_reviews, monkeypatch):
 
     monkeypatch.setattr(extract_mod, "cluster", spy)
     themes, _, _ = extract_themes(topic_reviews, HashEmbedder(dim=256), FakeLLM([distinct_labeler, echo_merger]), [])
-    assert (seen["k_min"], seen["k_max"]) == (6, 10)
-    assert 6 <= seen["k"] <= 10  # finer clusters first; label/merge/fold bring them down to <= 5
+    assert (seen["k_min"], seen["k_max"]) == (8, 8)  # Task 3.5 (F3/F4): fixed k
+    assert seen["k"] == 8  # finer clusters first; label/merge/fold bring them down to <= 5
     assert len(themes) <= 5
+
+
+def test_label_and_merge_prompts_name_praise_once():
+    """F5/F6: praise clusters share one name, and the real-data topics are in the taxonomy hints."""
+    from groww_pulse.prompts import load_prompt
+
+    for name in ("label_themes", "merge_themes"):
+        text = load_prompt(name)
+        assert "Ease of Use & Praise" in text, name
+        assert "Charts & Indicators" in text and "Feature Requests" in text, name
+
+
+def test_extract_reports_cluster_count_in_diagnostics(topic_reviews):
+    diagnostics = {}
+    extract_themes(topic_reviews, HashEmbedder(dim=256), FakeLLM([distinct_labeler, echo_merger]), [],
+                   k_min=3, k_max=8, diagnostics=diagnostics)
+    assert isinstance(diagnostics["k"], int) and 3 <= diagnostics["k"] <= 8

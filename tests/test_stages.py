@@ -157,7 +157,6 @@ def test_themes_stage_uses_previous_week(settings, db):
     llm = _themes_llm()
     themes_stage(settings, WEEK, db, HashEmbedder(), llm)
     assert "Withdrawal Delays" in llm.calls[0][1]  # last week's names offered for reuse
-    assert any(t.wow_delta is not None for t in db.load_themes(WEEK))
 
 
 def test_themes_stage_needs_reviews(settings, db):
@@ -211,3 +210,31 @@ def test_stage_outputs_hold_no_user_names_or_raw_ids(settings, db):
     pulse_stage(settings, WEEK, db, FakeLLM([writer]))
     text = _all_output(settings)
     assert USER not in text and PHONE not in text and "gp:" not in text
+
+
+def test_themes_stage_passes_other_threshold_and_reports_other_count(settings, db):
+    """F9: off-topic reviews land in `other`; themes.json reports k and other_count."""
+    off_topic = RawReview("gp:zz", 3, None, "Zebra quantum violin orchestra galaxy pineapple telescope marathon",
+                          datetime(2026, 10, 19, 9), "15.2.0", USER)
+    save_snapshot(settings.data_dir, "play_store", datetime(2026, 10, 24).date(), _raw() + [off_topic])
+    normalize_stage(settings, WEEK, db)
+    themes_stage(settings, WEEK, db, HashEmbedder(dim=1024), _themes_llm())
+    meta = json.loads((settings.data_dir / "runs" / WEEK / "themes.json").read_text(encoding="utf-8"))
+    assert isinstance(meta["k"], int) and meta["k"] >= 1
+    assert meta["other_count"] >= 1
+    assert meta["other_count"] + sum(t["count"] for t in meta["themes"]) == 42
+
+    # The setting really reaches extract_themes: with threshold 0 every review joins its nearest theme.
+    themes_stage(settings.model_copy(update={"other_threshold": 0.0}), WEEK, db, HashEmbedder(dim=1024), _themes_llm())
+    meta = json.loads((settings.data_dir / "runs" / WEEK / "themes.json").read_text(encoding="utf-8"))
+    assert meta["other_count"] == 0
+
+
+def test_themes_stage_sets_weekly_delta(settings, db):
+    """F10: wow_delta compares the run week with the week before, inside the current window (no earlier run)."""
+    save_snapshot(settings.data_dir, "play_store", datetime(2026, 10, 24).date(), _raw(n_per_topic=15))
+    normalize_stage(settings, WEEK, db)
+    themes_stage(settings, WEEK, db, HashEmbedder(), _themes_llm())  # 24 reviews in W43, 37 in W42
+    themes = db.load_themes(WEEK)
+    assert all(t.wow_delta is not None for t in themes)
+    assert abs(sum(t.wow_delta for t in themes)) < 0.25  # shares move between themes; `other` absorbs the rest
