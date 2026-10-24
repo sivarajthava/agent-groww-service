@@ -37,7 +37,7 @@
 - **Agent:**
   - It never sees raw MCP tools.
   - Its write tools take only `week`, publish the validated `pulse.md` from disk, and refuse to run until validation has passed.
-  - Limits: `max_steps = 12`, and any one tool at most 3 times in a row.
+  - Limits: `max_steps = 12`, and the same call (tool and arguments) at most 3 times in a row.
 - SQLite (`data/reviews.sqlite`) stores only scrubbed data. It is used for stage resume, last week's theme names and week-over-week change, idempotent re-runs, quote checks and the run audit (architecture.md §5).
 
 ## Models
@@ -763,7 +763,7 @@ The agent is a **bounded Groq tool-calling loop** over the same stage functions 
   2. Loop up to `AgentConfig.max_steps` times:
      - Call `llm.chat_with_tools(messages, tools.schemas(), reasoning_effort=AgentConfig.reasoning_effort)`.
      - If the reply has no `tool_calls`, stop. Its `content` is `final_message`.
-     - Otherwise, for each tool call: check the repeat limit (the same tool name more than `max_repeat` times in a row → stop with `failed`, reason `agent_repeat_limit`), then run `await tools.dispatch(...)`.
+     - Otherwise, for each tool call: check the repeat limit (the same call — same tool and same arguments — more than `max_repeat` times in a row → stop with `failed`, reason `agent_repeat_limit`), then run `await tools.dispatch(...)`.
      - Append the assistant message and a `{"role": "tool", "tool_call_id": ..., "content": json.dumps(result)}` message.
      - Add `{step, tool, args, ok, ms}` to the trace.
   3. If the step limit runs out → `failed`, reason `agent_step_limit`.
@@ -780,7 +780,7 @@ The agent is a **bounded Groq tool-calling loop** over the same stage functions 
 - [ ] **Step 1: Write failing tests (a scripted `FakeLLM` returning assistant messages with `tool_calls`):**
   - `test_happy_path_reaches_ok` (script: get_run_report → run_stage×4 → publish_doc → upsert_gmail_draft → final text → status `ok`, with `doc_url` and `draft_id` set)
   - **Review Focus #7:** `test_step_limit_stops_loop` (the script never stops calling tools → `failed`, `agent_step_limit`, `steps == max_steps`)
-  - **Review Focus #7:** `test_repeat_limit_stops_loop` (`get_pulse` called 4× in a row → `failed`, `agent_repeat_limit`)
+  - **Review Focus #7:** `test_repeat_limit_stops_loop` (`get_pulse` called 4× in a row with the same arguments → `failed`, `agent_repeat_limit`)
   - `test_status_from_tool_results_not_model_text` (the model claims "published!" but `publish_doc` returned an error → status not `ok`)
   - `test_trace_written_to_run_json`
   - `test_groq_error_returns_failed_with_hint` (`chat_with_tools` raises → `failed`, and the message suggests `pulse run`)

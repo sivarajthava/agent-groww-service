@@ -565,7 +565,7 @@ sequenceDiagram
 4. **Stopping:** the loop ends when the model replies without a tool call, which is its final summary. It also ends at a guardrail limit.
 
 **Guardrails:**
-- `max_steps = 12`. Any one tool may be called at most 3 times in a row.
+- `max_steps = 12`. The same call (same tool, same arguments) may be made at most 3 times in a row; `run_stage` over different stages is not a repeat.
 - Write tools are gated on validation state.
 - The MCP allowlist is enforced in the gateway, below the agent.
 - Every step is recorded in `run.json.agent_trace` (tool, args, ok/error, duration).
