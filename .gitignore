@@ -1,0 +1,10 @@
+.env
+data/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.superpowers/
+evals/reports/*
+!evals/reports/baseline.md
