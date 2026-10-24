@@ -29,6 +29,12 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+]
+# Read-only HTTP API + weekly scheduler for hosted deployments (Railway); see doc/deployment.md
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
 ]
 
 [project.scripts]

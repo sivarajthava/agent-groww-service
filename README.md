@@ -123,6 +123,17 @@ npm run build && npm start
 
 Set `PULSE_DATA_DIR` to read runs from another directory.
 
+## Deployment (Railway + Vercel)
+
+The backend runs on Railway as one Docker service (`pulse serve`). It provides a token-protected, read-only runs
+API and the Monday 09:00 IST scheduler, with `data/` on a volume. The web app runs on Vercel and reads runs from
+that API. Full plan, variables and commands: [`doc/deployment.md`](doc/deployment.md).
+
+```bash
+pip install -e ".[api]"
+PULSE_API_TOKEN=<16+ chars> pulse serve --port 8000   # local: API + scheduler (PULSE_SCHEDULE=false to disable)
+```
+
 ## Scheduling (Mondays 09:00 IST)
 
 - **Windows:** `.\scripts\schedule_windows.ps1` registers a Task Scheduler job that runs `pulse run` from the repo

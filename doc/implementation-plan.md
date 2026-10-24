@@ -1048,6 +1048,62 @@ It **reads** the pipeline's artifacts and nothing else: it never runs a stage, c
 
 ---
 
+## Phase 10 — Deployment (Railway backend, Vercel web)
+
+Plan and rationale: [deployment.md](./deployment.md).
+
+### Task 10.1: Runs API, scheduler and `pulse serve`
+
+**Files:**
+- Create: `src/groww_pulse/api.py`, `tests/test_api.py`
+- Modify: `src/groww_pulse/cli.py` (`pulse serve`), `pyproject.toml` (`api` extra: fastapi, uvicorn; `httpx` in dev)
+
+**Interfaces:**
+- Produces: `create_app(settings, *, token=None, runner=run_pipeline, schedule=None) -> FastAPI` with `GET /health`,
+  `GET /runs`, `GET /runs/{week}` and `POST /runs/{week}/trigger?dry_run=`. `RunStore(data_dir)`,
+  `Trigger(settings, runner)`, `due_week(now_utc, store) -> str | None`, `WeeklyScheduler(store, trigger).tick()`.
+- `pulse serve [--host] [--port]` listens on `$PORT` by default.
+
+**Rules:** Bearer `PULSE_API_TOKEN` (≥ 16 chars, else the app won't start) on everything but `/health`. Real ISO
+weeks only. Quotes are served without `review_id`. Runs are dry unless `PULSE_PUBLISH=true`. The scheduler fires
+once per week after Monday 09:00 IST, only when the week has no `run.json`.
+
+- [x] **Step 1:** Write `tests/test_api.py`: token required (and a weak one refused at startup), list order, partial
+  weeks, provenance dropped, invalid weeks 404, trigger 202/403/409, `due_week` around Monday 09:00 IST and a missed
+  slot, and the scheduler's dry-run default.
+- [x] **Step 2:** Implement `api.py` and `pulse serve`. `pytest tests/test_api.py` → PASS (32 tests).
+
+### Task 10.2: Railway packaging
+
+**Files:** Create `Dockerfile`, `.dockerignore`, `railway.json`.
+
+- [x] **Step 1:** Build the image: `python:3.12-slim`, CPU torch, editable install, spaCy model and MiniLM baked in.
+- [x] **Step 2:** Run it with the web fixtures mounted at `/app/data`: `/health` 200, `/runs` 401 without a token,
+  both fixture weeks listed with a token, no `review_id` in `/runs/2026-W43`.
+
+### Task 10.3: Web reads from the API on Vercel
+
+**Files:**
+- Modify: `web/lib/runs.ts` (filesystem and API sources behind the same `listRuns` / `getRun`), `web/app/page.tsx`
+- Create: `web/app/error.tsx`, `web/middleware.ts` (optional Basic auth), `web/vercel.json`,
+  `web/tests/api-source.test.ts`, `web/tests/middleware.test.ts`
+
+- [x] **Step 1:** Tests: bearer header and `no-store`, provenance stripped even if the API sends it, 404 → not found,
+  malformed weeks never reach the API, 401/5xx/network → `BackendUnavailable`, and Basic auth on/off.
+- [x] **Step 2:** Implement. `npm test` → PASS (26 tests). `npm run build` → PASS.
+- [x] **Step 3:** End to end on localhost: `pulse serve` on the fixtures, then `next start` with `PULSE_API_URL`,
+  `PULSE_API_TOKEN` and `WEB_BASIC_AUTH`: 401 without credentials, the pulse renders with them, unknown week 404,
+  backend stopped → error page.
+
+### Task 10.4: Rollout (manual)
+
+- [ ] **Step 1:** Railway: project, service, volume `/app/data`, variables, `railway up`, domain (deployment.md §4.1).
+- [ ] **Step 2:** Trigger the first dry run and check `/runs`.
+- [ ] **Step 3:** Vercel: link `web/`, add the three variables, `vercel deploy --prod` (§4.2).
+- [ ] **Step 4:** Work through the §4.3 checklist, then set `PULSE_RUNNER=railway` in GitHub.
+
+---
+
 ## Requirement → Task Coverage
 
 | Requirement | Task(s) |
@@ -1071,3 +1127,4 @@ It **reads** the pipeline's artifacts and nothing else: it never runs a stage, c
 | No PII: measured precision/recall, not just unit cases | 8.1 (`pii_seeded`), 8.2, 8.3 gate |
 | Robust to hostile and unusual input | 8.4 (injection), 8.5 (E1–E33) |
 | Team can read the pulse and run health without raw files | 9.1 |
+| Hosted weekly runs and a shared web view | 10.1, 10.2, 10.3, 10.4 |

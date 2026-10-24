@@ -23,7 +23,8 @@ concurrency:
 
 jobs:
   pulse:
-    if: github.event_name != 'pull_request'
+    # Skipped once Railway runs the weekly pulse (doc/deployment.md §6): set the repo variable PULSE_RUNNER=railway.
+    if: github.event_name != 'pull_request' && vars.PULSE_RUNNER != 'railway'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -99,7 +100,7 @@ jobs:
           cache: pip
       - name: Install
         run: |
-          pip install -e ".[dev]"
+          pip install -e ".[dev,api]"   # api: tests/test_api.py
           python -m spacy download en_core_web_sm
       - name: Tests
         run: pytest -q -m "not slow"

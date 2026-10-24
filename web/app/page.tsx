@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { StatusBadge } from "@/components/StatusBadge";
 import { rating, windowLabel } from "@/lib/format";
-import { dataDir, listRuns } from "@/lib/runs";
+import { listRuns, sourceLabel } from "@/lib/runs";
 
 export const dynamic = "force-dynamic"; // new runs appear without a rebuild
 
@@ -14,7 +14,7 @@ export default async function Home() {
       <div className="card empty">
         <h1>No runs yet</h1>
         <p>
-          Nothing found in <code>{dataDir()}/runs</code>. Produce a pulse with the pipeline, then refresh:
+          Nothing found in <code>{sourceLabel()}</code>. Produce a pulse with the pipeline, then refresh:
         </p>
         <pre>pulse run --dry-run</pre>
       </div>

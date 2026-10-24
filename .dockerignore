@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+.pytest_cache
+.superpowers
+**/__pycache__
+*.pyc
+*.egg-info
+.env
+data
+web
+tests
+evals
+doc
+scripts
+*.iml

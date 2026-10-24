@@ -589,7 +589,8 @@ flowchart LR
 - **Privacy.** Files are read on the server. Quote provenance (`review_id`) is dropped before rendering, MCP calls
   show argument keys only, and `pulse.md` is rendered without raw HTML.
 - **Path safety.** The week param must match `YYYY-Www` before any file path is built.
-- **Config.** `PULSE_DATA_DIR` points at the data dir (default `../data`).
+- **Config.** `PULSE_DATA_DIR` points at the data dir (default `../data`). When deployed, `PULSE_API_URL` makes it
+  read the same files from the backend's runs API instead (Vercel → Railway, see [deployment.md](./deployment.md)).
 
 ---
 

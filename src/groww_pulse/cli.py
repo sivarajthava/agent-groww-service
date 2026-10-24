@@ -1,10 +1,11 @@
-"""The `pulse` command line: `pulse run`, `pulse publish`, `pulse agent` and `pulse eval`.
+"""The `pulse` command line: `pulse run`, `pulse publish`, `pulse agent`, `pulse eval` and `pulse serve`.
 
 Exit codes: 0 for ok / dry_run, 2 for partial (Doc or draft missing), 1 for failed (nothing published).
 Output is one summary line of status, links and flags; it never prints review text.
 """
 
 import asyncio
+import os
 from datetime import date
 from pathlib import Path
 
@@ -128,6 +129,30 @@ def eval_cmd(
     for failure in result.failures:
         typer.echo(f"  failed: {failure}")
     raise typer.Exit(0 if result.ok else 1)
+
+
+@app.command("serve")
+def serve_cmd(
+    host: str = typer.Option("0.0.0.0", "--host"),
+    port: int = typer.Option(None, "--port", help="Default: $PORT (set by Railway), else 8000."),
+    config: Path = ConfigOpt,
+) -> None:
+    """Serve the read-only runs API and the weekly scheduler (needs the `api` extra and PULSE_API_TOKEN)."""
+    import logging
+
+    import uvicorn
+
+    from groww_pulse.api import create_app
+
+    settings = _settings(config)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    try:
+        api = create_app(settings)
+    except RuntimeError as e:
+        typer.echo(f"config error: {e}", err=True)
+        raise typer.Exit(1) from None
+    uvicorn.run(api, host=host, port=port or int(os.environ.get("PORT", "8000")), proxy_headers=True,
+                forwarded_allow_ips="*")
 
 
 if __name__ == "__main__":
