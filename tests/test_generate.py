@@ -27,6 +27,25 @@ def test_context_shape():
     ]
 
 
+def test_context_gives_word_budget_left_for_llm_text():
+    from groww_pulse.models import PulseDraft
+    from groww_pulse.pulse.render import render_markdown
+    from groww_pulse.pulse.validate import word_count
+
+    fixed = word_count(render_markdown(WEEK, WINDOW, TOTAL, AVG, TOP, QUOTES, PulseDraft(("",) * 3, ("",) * 3)))
+    ctx = _ctx()
+    assert ctx["text_word_budget"] == 250 - fixed
+    assert 0 < ctx["text_word_budget"] < 250
+
+
+def test_week_monday_lives_in_weeks():
+    from datetime import date
+
+    from groww_pulse.weeks import week_monday
+
+    assert week_monday("2026-W43") == date(2026, 10, 19)
+
+
 def test_context_contains_no_quote_text():
     dumped = json.dumps(_ctx(), ensure_ascii=False)
     for q in QUOTES:

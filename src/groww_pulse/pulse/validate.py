@@ -7,7 +7,7 @@ from groww_pulse.llm import LLMClient
 from groww_pulse.models import Pulse, PulseDraft, Review, ValidationResult
 from groww_pulse.privacy.scrubber import REDACTION_TOKENS, find_pattern_pii, find_pii
 from groww_pulse.pulse.generate import DraftContractError, generate_draft
-from groww_pulse.pulse.render import render_markdown
+from groww_pulse.pulse.render import render_markdown, word_count
 
 HARD_CHECKS = ("quote_fidelity", "themes", "quotes", "pii", "banned")  # never retried: the LLM can't fix them
 SUMMARY_FALLBACK_WORDS = 12
@@ -23,12 +23,6 @@ class ValidationFailed(Exception):
     def __init__(self, result: ValidationResult):
         super().__init__("; ".join(result.failures))
         self.result = result
-
-
-def word_count(markdown: str) -> int:
-    """Words in the rendered pulse, ignoring Markdown syntax; "★1" and "19%" count as one word each."""
-    text = re.sub(r"(?m)^\s*(#+|[-*]|\d+\.)\s+", " ", markdown).replace("*", " ")
-    return len(re.findall(r"[\w’'-]+", text))
 
 
 def _quote_ok(text: str, review: Review | None) -> bool:

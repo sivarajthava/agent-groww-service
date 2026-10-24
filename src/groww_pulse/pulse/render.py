@@ -8,7 +8,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from groww_pulse.models import PulseDraft, Quote, Theme
-from groww_pulse.pulse.generate import week_monday
+from groww_pulse.weeks import week_monday
 
 _env = Environment(
     loader=FileSystemLoader(Path(__file__).parent),
@@ -38,6 +38,12 @@ def render_markdown(
         quotes=quotes,
         actions=draft.actions,
     )
+
+
+def word_count(markdown: str) -> int:
+    """Words in the rendered pulse, ignoring Markdown syntax; "★1" and "19%" count as one word each."""
+    text = re.sub(r"(?m)^\s*(#+|[-*]|\d+\.)\s+", " ", markdown).replace("*", " ")
+    return len(re.findall(r"[\w’'-]+", text))
 
 
 def render_html(markdown: str) -> str:

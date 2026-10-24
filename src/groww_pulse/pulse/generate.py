@@ -6,8 +6,9 @@ from datetime import date
 from groww_pulse.llm import LLMClient, LLMContractError
 from groww_pulse.models import PulseDraft, Quote, Review, Theme
 from groww_pulse.prompts import load_prompt
+from groww_pulse.pulse.render import render_markdown, word_count
 from groww_pulse.themes.quotes import trim_to_span
-from groww_pulse.weeks import week_window
+from groww_pulse.weeks import week_monday
 
 SNIPPETS_PER_THEME = 5
 SNIPPET_WORDS = 30
@@ -27,11 +28,6 @@ class DraftContractError(LLMContractError):
     """The draft didn't have exactly 3 summaries and 3 actions, all strings."""
 
 
-def week_monday(week: str) -> date:
-    """Monday of an ISO week string ("2026-W43" -> 2026-10-19), shown as "Week of" in the pulse."""
-    return week_window(week, 1)[0]
-
-
 def build_context(
     week: str,
     window: tuple[date, date],
@@ -42,7 +38,13 @@ def build_context(
     reviews_by_id: dict[str, Review],
     word_budget: int = 250,
 ) -> dict:
-    """The only input the pulse LLM sees. Quotes appear as placeholders with ratings, never as text."""
+    """The only input the pulse LLM sees. Quotes appear as placeholders with ratings, never as text.
+
+    `text_word_budget` is what's left of `word_budget` for the LLM's summaries and actions once the fixed
+    parts (headings, theme names, shares, quotes) are counted.
+    """
+    blank = PulseDraft(("",) * len(top), ("",) * len(top))
+    fixed_words = word_count(render_markdown(week, window, total_reviews, avg_rating, top, quotes, blank))
     quote_ids = {q.review_id for q in quotes}
     quote_texts = [q.text.rstrip("…") for q in quotes]
     themes = []
@@ -79,6 +81,7 @@ def build_context(
             for i, q in enumerate(quotes, 1)
         ],
         "word_budget": word_budget,
+        "text_word_budget": max(word_budget - fixed_words, 0),
     }
 
 

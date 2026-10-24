@@ -13,7 +13,8 @@ The quotes themselves are inserted later by the system as `{{QUOTE_1}}`…`{{QUO
 - `actions`: exactly 3 strings. Action N addresses theme N and **starts with that theme's exact name followed by
   a colon**, e.g. `"Withdrawal Delays: ..."`. Each is a concrete next step (what to change, and how to measure it),
   at most 25 words.
-- Stay within the `word_budget` for the whole pulse; keep it scannable.
+- The whole pulse must stay within `word_budget` words. The quotes, headings and theme names already use part
+  of it: your 3 summaries and 3 actions together must not exceed `text_word_budget` words. Shorter is better.
 - Never copy sentences from the snippets, never invent numbers that aren't in the data, and never include
   names, phone numbers, emails, ids or URLs.
 

@@ -19,3 +19,8 @@ def week_window(week: str, weeks_back: int) -> tuple[date, date]:
     until = date.fromisocalendar(int(m.group(1)), int(m.group(2)), 7)
     since = until - timedelta(days=7 * weeks_back - 1)
     return since, until
+
+
+def week_monday(week: str) -> date:
+    """Monday of an ISO week ("2026-W43" -> 2026-10-19), shown as "Week of" in the pulse."""
+    return week_window(week, 1)[0]
