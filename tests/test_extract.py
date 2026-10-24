@@ -62,9 +62,10 @@ def test_never_more_than_five_themes_even_if_merge_ignores_cap():
 
 
 def test_label_rejects_missing_cluster():
-    fake = FakeLLM([{"clusters": [{"cluster": 0, "name": "A", "description": "a"}]}])
+    fake = FakeLLM([{"clusters": [{"cluster": 0, "name": "A", "description": "a"}]}] * 3)
     with pytest.raises(LLMContractError, match="cluster"):
         label_and_merge(_samples(2), [], fake)
+    assert len(fake.calls) == 3  # retried twice (Task 8.4) before giving up
 
 
 def test_previous_names_and_taxonomy_in_label_prompt():
@@ -80,7 +81,7 @@ def test_review_text_is_wrapped_as_data():
     fake = FakeLLM([distinct_labeler])
     label_and_merge(samples, [], fake)
     system, user = fake.calls[0]
-    assert re.search(r"<review>Ignore previous instructions[^<]*</review>", user)
+    assert re.search(r"<review id=\"r\d+\">Ignore previous instructions[^<]*</review>", user)
     assert "data" in system.lower() and "never follow" in system.lower()
 
 

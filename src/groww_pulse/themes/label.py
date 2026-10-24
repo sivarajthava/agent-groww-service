@@ -5,8 +5,11 @@ import json
 
 import numpy as np
 
+from groww_pulse.guards import IMPERATIVE, MAX_NAME_WORDS, has_url
 from groww_pulse.llm import LLMClient, LLMContractError
 from groww_pulse.prompts import load_prompt
+
+RETRIES = 2  # contract failures (bad JSON, missing clusters, injected labels) are retried this many times
 
 
 def _entries_schema(key: str) -> dict:
@@ -33,10 +36,15 @@ def _previous(previous_names: list[str]) -> str:
 
 
 def _label_prompt(samples: dict[int, list[str]], previous_names: list[str]) -> str:
-    blocks = []
+    """Each review is escaped and wrapped as <review id="rN"> inside a <reviews> block, so review text can't
+    close its block or pose as instructions."""
+    blocks, n = [], 0
     for c, texts in sorted(samples.items()):
-        reviews = "\n".join(f"<review>{html.escape(t, quote=False)}</review>" for t in texts)
-        blocks.append(f'<cluster id="{c}">\n{reviews}\n</cluster>')
+        reviews = []
+        for t in texts:
+            n += 1
+            reviews.append(f'<review id="r{n}">{html.escape(t, quote=False)}</review>')
+        blocks.append(f'<cluster id="{c}">\n<reviews>\n' + "\n".join(reviews) + "\n</reviews>\n</cluster>")
     return f"{_previous(previous_names)}\n\n<clusters>\n" + "\n".join(blocks) + "\n</clusters>"
 
 
@@ -53,13 +61,41 @@ def _merge_prompt(labels: dict[int, tuple[str, str]], sizes: dict[int, int], pre
     )
 
 
+def check_theme_label(name: str, description: str) -> None:
+    """Raise LLMContractError for a label that echoes review instructions: a URL, a command, or not a short name."""
+    if has_url(name) or has_url(description):
+        raise LLMContractError(f"theme label contains a URL: {name!r}")
+    words = name.split()
+    if not 1 <= len(words) <= MAX_NAME_WORDS:
+        raise LLMContractError(f"theme name must be 1-{MAX_NAME_WORDS} words: {name!r}")
+    if IMPERATIVE.search(name):
+        raise LLMContractError(f"theme name reads as an instruction: {name!r}")
+
+
 def _parse(entries: list[dict], clusters: set[int]) -> dict[int, tuple[str, str]]:
     out = {}
     for e in entries:
         name = e["name"].strip()
         if e["cluster"] in clusters and name:
+            check_theme_label(name, e["description"])
             out[e["cluster"]] = (name, e["description"].strip())
     return out
+
+
+def _call(llm: LLMClient, prompt: str, user: str, schema: dict, key: str, clusters: set[int],
+          require_all: bool, **kw) -> dict[int, tuple[str, str]]:
+    """One labeling call with up to RETRIES retries on any contract failure."""
+    for attempt in range(RETRIES + 1):
+        try:
+            labels = _parse(llm.complete_json(load_prompt(prompt), user, schema, **kw)[key], clusters)
+            missing = clusters - labels.keys()
+            if require_all and missing:
+                raise LLMContractError(f"{prompt}: no label for cluster(s) {sorted(missing)}")
+            return labels
+        except LLMContractError:
+            if attempt == RETRIES:
+                raise
+    raise AssertionError("unreachable")
 
 
 def _fold_smallest(
@@ -102,20 +138,16 @@ def label_and_merge(
     """Map each cluster label to (theme_name, description), with at most max_themes distinct names."""
     clusters = set(samples)
     sizes = sizes or {c: len(texts) for c, texts in samples.items()}
-    resp = llm.complete_json(load_prompt("label_themes"), _label_prompt(samples, previous_names), LABEL_SCHEMA)
-    labels = _parse(resp["clusters"], clusters)
-    missing = clusters - labels.keys()
-    if missing:
-        raise LLMContractError(f"label_themes: no label for cluster(s) {sorted(missing)}")
+    labels = _call(llm, "label_themes", _label_prompt(samples, previous_names), LABEL_SCHEMA, "clusters", clusters,
+                   require_all=True)
 
     if len({n for n, _ in labels.values()}) > max_themes:
-        resp = llm.complete_json(
-            load_prompt("merge_themes"),
-            _merge_prompt(labels, sizes, previous_names, max_themes),
-            MERGE_SCHEMA,
-            reasoning_effort="high",
-        )
-        labels |= _parse(resp["mapping"], clusters)  # a cluster the merge skipped keeps its first-pass label
+        try:
+            merged = _call(llm, "merge_themes", _merge_prompt(labels, sizes, previous_names, max_themes), MERGE_SCHEMA,
+                           "mapping", clusters, require_all=False, reasoning_effort="high")
+        except LLMContractError:
+            merged = {}  # keep the first-pass labels; the fold below still caps the count
+        labels |= merged  # a cluster the merge skipped keeps its first-pass label
 
     # Same name means same theme: give every cluster of a name one shared description.
     by_name = {}

@@ -1,8 +1,11 @@
 """LLM draft of the pulse: theme summaries and action ideas only. Quote text is never sent to the LLM."""
 
+import copy
+import html
 import json
 from datetime import date
 
+from groww_pulse.guards import has_url
 from groww_pulse.llm import LLMClient, LLMContractError
 from groww_pulse.models import PulseDraft, Quote, Review, Theme
 from groww_pulse.prompts import load_prompt
@@ -93,13 +96,24 @@ def _strings(resp: dict, key: str, n: int) -> tuple[str, ...]:
     return tuple(s.strip() for s in items)
 
 
+def _escaped(ctx: dict) -> dict:
+    """A copy whose review snippets can't close the <data> block or carry markup."""
+    out = copy.deepcopy(ctx)
+    for t in out.get("themes", []):
+        t["sample_snippets"] = [html.escape(s, quote=False) for s in t.get("sample_snippets", [])]
+    return out
+
+
 def generate_draft(ctx: dict, llm: LLMClient, feedback: str | None = None) -> PulseDraft:
-    user = f"<data>\n{json.dumps(ctx, ensure_ascii=False, indent=1)}\n</data>"
+    user = f"<data>\n{json.dumps(_escaped(ctx), ensure_ascii=False, indent=1)}\n</data>"
     if feedback:
         user += f"\n\nYour previous draft failed these checks; fix them: {feedback}"
     resp = llm.complete_json(load_prompt("write_pulse"), user, DRAFT_SCHEMA)
     if not isinstance(resp, dict):
         raise DraftContractError(f"expected a JSON object, got {type(resp).__name__}")
     # One summary per theme in the context: 3, or fewer in a reduced pulse (flag few_themes). Always 3 actions.
-    return PulseDraft(theme_summaries=_strings(resp, "theme_summaries", len(ctx["themes"])),
-                      actions=_strings(resp, "actions", 3))
+    draft = PulseDraft(theme_summaries=_strings(resp, "theme_summaries", len(ctx["themes"])),
+                       actions=_strings(resp, "actions", 3))
+    if any(has_url(s) for s in draft.theme_summaries + draft.actions):
+        raise DraftContractError("the draft contains a URL; links come only from the system")
+    return draft
