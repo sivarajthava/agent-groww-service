@@ -111,12 +111,12 @@ def _ints(d: dict) -> dict[str, int]:
     return {k: v for k, v in d.items() if isinstance(v, int) and not isinstance(v, bool)}
 
 
-def _read_run_json(ctx: RunContext) -> dict:
+def read_run_json(ctx: RunContext) -> dict:
     path = run_dir(ctx.settings, ctx.week) / "run.json"
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"week": ctx.week}
 
 
-def _write_run_json(ctx: RunContext, data: dict) -> None:
+def write_run_json(ctx: RunContext, data: dict) -> None:
     path = run_dir(ctx.settings, ctx.week) / "run.json"
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -184,7 +184,7 @@ async def _publish_async(ctx: RunContext, markdown: str) -> tuple[str | None, st
 def _publish(ctx: RunContext) -> StageResult:
     """Publish the validated pulse.md from disk. Refuses unless run.json says validation passed."""
     out = run_dir(ctx.settings, ctx.week)
-    run = _read_run_json(ctx)
+    run = read_run_json(ctx)
     pulse_md = out / "pulse.md"
     if not run.get("validation", {}).get("ok") or not pulse_md.exists():
         return StageResult("publish", False, error="publish: no validated pulse.md for this week; run the pulse stage")
@@ -194,12 +194,12 @@ def _publish(ctx: RunContext) -> StageResult:
     except MCP_CONFIG_ERRORS as e:
         gws = ctx.deps.gateways or ()
         run["mcp_calls"] = [c for gw in gws for c in gw.calls]
-        _write_run_json(ctx, run)
+        write_run_json(ctx, run)
         return StageResult("publish", False, error=f"publish: {type(e).__name__}: {e}")
     # This publish's outcome replaces an earlier attempt's docs_failed / gmail_failed flags.
     kept = [f for f in run.get("flags", []) if not f.endswith("_failed")]
     run.update(doc_url=doc_url, draft_id=draft_id, mcp_calls=calls, flags=kept)
-    _write_run_json(ctx, run)
+    write_run_json(ctx, run)
     with Database(db_path(ctx.settings)) as db:
         db.record_run(ctx.week, "publishing", doc_url=doc_url, draft_id=draft_id)
     counts = {"doc": int(doc_url is not None), "draft": int(draft_id is not None)}
@@ -269,9 +269,9 @@ def run_pipeline(
         status = "partial"
     else:
         status = "ok" if "publish" in stages else "dry_run"
-    run = _read_run_json(ctx)
+    run = read_run_json(ctx)
     run.update(status=status, flags=sorted(set(run.get("flags", [])) | set(flags)), error=error)
-    _write_run_json(ctx, run)
+    write_run_json(ctx, run)
     with Database(db_path(settings)) as db:
         db.record_run(week, status)
     pulse_md = run_dir(settings, week) / "pulse.md"
