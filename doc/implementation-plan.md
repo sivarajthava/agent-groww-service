@@ -326,6 +326,26 @@ def test_find_pii_ignores_tokens(): assert find_pii("call [phone]") == []
 
 ## Phase 3 — Themes & Quotes
 
+### Data findings that shape this phase (real Groww reviews, 2026-10-24)
+
+Source: the Play Store snapshot `data/raw/play_store/2026-10-24.json` (12,415 reviews) after Phase 2 normalization, i.e. the scrubbed reviews in `data/reviews.sqlite`. Unless noted, numbers are for the default 10-week window ending in 2026-W43 (2026-08-17 … 2026-10-25): **1,751 kept reviews, 1,495 of them English**. They were measured with the real `all-MiniLM-L6-v2` embedder and scikit-learn KMeans. Tasks 3.1–3.4 are implemented. Task 3.5 applies these findings.
+
+| # | Finding | Consequence for Phase 3 |
+|---|---------|-------------------------|
+| F1 | **Volume is high.** 88–240 English reviews per ISO week, and 1,495 in the window. `min_reviews = 30` never triggers on real data. | Window widening and `low_volume` only matter for edge cases (Review Focus #2). No change. |
+| F2 | **The kept set skews negative.** 46% are 1–2★ with an average of 2.98, against 12% and 4.39 in the raw snapshot. The `min_words = 8` filter drops the short "Good app" 5★ reviews. | `avg_rating` in `themes.json` and the pulse is the average of the *analyzed* reviews, not the store rating. See open question Q1 below. |
+| F3 | **There is no natural cluster structure.** The silhouette score is 0.03–0.05 for every k from 3 to 14, so selection simply lands on the edge of the range (k = 5 for 3–8, k = 6 for 6–10). | Silhouette can't choose k. Fix k in config (Task 3.5). |
+| F4 | **Stability depends on k.** Agreement between seeds (ARI) is 0.92 at k = 5, 0.68 (min 0.54) at k = 6 and 0.85 at k = 8. With k = 8, reordering the same reviews gives ARI 0.80 (0.84 with `n_init = 50`, at 4.5× the time). The current config (k 6–10) lands on **k = 6, the least stable choice**. `reviews_in_window` orders by `date, id`, so a run is reproducible, but each new review shifts the order. | Use k = 8 with `n_init = 10`. Theme *names* stay stable through `previous_names`. The Phase 8 stability metric should compare theme names and the top 3, not cluster ARI. |
+| F5 | **Generic praise dominates.** 3 of the 8 clusters are praise ("easy to use", "good for beginners", "user-friendly"): 37% of English reviews, 19% of them negative. 38% of reviews match no taxonomy keyword, and 68% of those are 4–5★. With the weights (0.6, 0.3, 0.1), a merged praise theme scores **0.28 and ranks 3rd**, above the chart/update bug (0.21) and charges (0.21). That contradicts architecture §4.5 ("painful issues rank above the many generic 'nice app' reviews"). With **(0.4, 0.5, 0.1)**, praise drops to 6th (0.25) and the top 3 are customer support (0.48), the "worst / money / not working" catch-all (0.42), and feature requests & IPO (0.29), just ahead of the chart/update bug (0.29). | Change `rank_weights` and tell the label/merge prompts to give every praise cluster **one** shared name, so praise takes at most 1 of the 5 slots (Task 3.5). |
+| F6 | **Real topics differ from the taxonomy hints.** Keyword share of English reviews (negative share): app performance & update bugs 21% (0.61), trading/order execution incl. the new "scalper" option 19% (0.52), customer support 12% (0.83), charges & brokerage 11% (0.60), **charts & indicators 8% (0.49)**, MF/SIP 7% (0.30), withdrawals 4% (0.74), payments 3%, KYC 3%, IPO 3%, statements 1%. KMeans at k = 8 finds: charges · customer support · chart/scalper update · catch-all failures · feature requests & IPO · 3× praise. | Add **Charts & Indicators**, **Feature Requests** and **Ease of Use & Praise** to the taxonomy hints. "Withdrawal Delays" is a minor theme in this data; test fixtures may keep using it. |
+| F7 | **Hinglish leaks into `lang = "en"`.** 67 English-tagged reviews contain Hinglish words, 28 of them with ≥ 2. The largest group (25 of 67) sits in the feature-request cluster (e.g. "Bank nifty ka details not clear"). The word list collides with English and typos: `aap` (a typo of "app", 17 hits), `tab`, `ho`, `pe`, `se`. | Quote eligibility must reject code-mixed text, ignoring the English collisions (Review Focus #1, Task 3.5). |
+| F8 | **Quotes are not scarce.** 1,489 of 1,495 English reviews are 8–40 words after trimming, and 314 (21%) need the `…` trim. | The Review Focus #3 fallback matters only for tiny data sets. No change. |
+| F9 | **`other_threshold = 0.2` does nothing.** At k = 8, cosine similarity to the nearest centroid has p5 0.33. Only 5 reviews fall below 0.2, 39 below 0.3 and 88 below 0.35. | Raise it to 0.3 (≈ 3% go to `other`), make it configurable, and report the count (Task 3.5). |
+| F10 | **`wow_delta` is about zero by construction.** Consecutive 10-week windows share 90% of their reviews (1,407 of the 1,571 in the W42 window are also in W43), so share deltas between runs barely move and the 0.1 weight never matters. | Compute the delta inside the window: the theme's share in the latest ISO week minus its share in the previous ISO week (Task 3.5). |
+| F11 | **Clean inputs.** No exact duplicate texts and no injection-like reviews. 56 English reviews carry a redaction token (55 of them `[name]`), and these tokens don't pull reviews into a cluster of their own (checked by stripping them and re-clustering). | Prompt-injection tests (Task 8.4) must stay synthetic. No change to embedding input. |
+
+**Open question Q1 (owner decision, not in Task 3.5):** should the pulse's "Avg rating" be the store-like average of *all* reviews in the window (4.39-like), or of the analyzed reviews (2.98-like, as today)? The first option means the normalize stage has to keep per-window rating counts of the short reviews it drops (counts only, no text).
+
 ### Task 3.1: Embedder
 
 **Files:**
@@ -360,6 +380,8 @@ def test_find_pii_ignores_tokens(): assert find_pii("call [phone]") == []
 - [ ] **Step 4:** Run `pytest tests/test_cluster.py -v`. Expected: PASS.
 - [ ] **Step 5:** Commit: `feat: silhouette-selected KMeans clustering`
 
+**As built:** with fewer than `2 * k_min` points, everything stays in one cluster (the plan's `n < k_min + 1` rule contradicted its own 4-vector test). `extract_themes` takes k from `Settings.cluster_k_min/max`, which the Phase 3 follow-up set to 6–10. F3/F4 show that silhouette selection doesn't work on this data, and Task 3.5 fixes k = 8.
+
 ### Task 3.3: LLM labeling, merging to ≤ 5, assignment
 
 **Files:**
@@ -389,6 +411,13 @@ def test_non_english_reviews_not_clustered(): ...   # Hindi reviews end up in no
 - [ ] **Step 4:** Run `pytest tests/test_extract.py -v`. Expected: PASS.
 - [ ] **Step 5:** Commit: `feat: LLM-labeled theme extraction capped at 5`
 
+**As built:**
+- `label_and_merge` also takes `centroids=` and `sizes=`, so it can fold the smallest themes into the nearest one.
+- Clusters with fewer than 3 reviews (`MIN_CLUSTER_SIZE`) aren't labeled; their reviews are assigned like any others.
+- The theme id is the slug of the name.
+- `share` is computed over all reviews passed in, including non-English ones.
+- Prompts live in `prompts/`, and their sha256 is recorded in `run.json`.
+
 ### Task 3.4: Ranking and quote selection
 
 **Files:**
@@ -414,6 +443,47 @@ def test_non_english_reviews_not_clustered(): ...   # Hindi reviews end up in no
 - [ ] **Step 3:** Implement `rank.py` and `quotes.py`.
 - [ ] **Step 4:** Run the same command. Expected: PASS.
 - [ ] **Step 5:** Commit: `feat: theme ranking and verbatim quote selection`
+
+**As built:**
+- A theme with no review of its preferred sentiment falls back to an eligible review of any sentiment before it borrows from another theme.
+- Since Task 6.1, `select_quotes` always returns **3** quotes, even with fewer than 3 themes (a reduced pulse, flagged `few_themes`). Extra slots take the next-best unused review of any top theme, and `NotEnoughQuotes` means fewer than 3 were found.
+
+### Task 3.5: Tune themes, ranking and quotes to the real data
+
+**Why:** findings F3–F7, F9 and F10 above. Every change is a config value, a prompt line or a small function, so the Phase 3 interfaces stay as they are.
+
+**Files:**
+- Modify: `config.yaml`, `src/groww_pulse/config.py`, `src/groww_pulse/themes/rank.py`, `src/groww_pulse/themes/quotes.py`, `src/groww_pulse/stages.py`, `prompts/label_themes.md`, `prompts/merge_themes.md`, `doc/architecture.md` (§4.4 hints, §4.5 weights)
+- Test: `tests/test_rank.py`, `tests/test_quotes.py`, `tests/test_config.py`, `tests/test_stages.py`, `tests/test_extract.py`
+
+**Interfaces:**
+- **Config (F3, F4, F5, F9):**
+  - `cluster_k_min: 8` and `cluster_k_max: 8`, so k is fixed and `cluster()` still falls back to one cluster under 16 reviews.
+  - `rank_weights: [0.4, 0.5, 0.1]`.
+  - A new `Settings.other_threshold: float = 0.3`, constrained to `0 ≤ other_threshold < 1`. `themes_stage` passes it to `extract_themes`.
+- **Prompts (F5, F6):**
+  - The taxonomy hints gain **Charts & Indicators**, **Feature Requests** and **Ease of Use & Praise**.
+  - `label_themes.md`: "Clusters of generic praise (easy to use, good for beginners, nice app) all get the name `Ease of Use & Praise`."
+  - `merge_themes.md`: "Merge every praise cluster into the single `Ease of Use & Praise` theme."
+- **Week-over-week (F10):** `rank.weekly_delta(themes: list[Theme], reviews_by_id: dict[str, Review], week: str, min_week_reviews: int = 20) -> list[Theme]`.
+  - It sets `wow_delta` = the theme's share among the reviews dated in ISO `week` minus its share among the reviews dated in the previous ISO week. Both shares are taken from the theme's `review_ids` inside the current window.
+  - `wow_delta` is `None` when either week has fewer than `min_week_reviews` reviews.
+  - `themes_stage` uses it instead of `with_wow_delta`. `previous_names` still come from last week's run.
+- **Quotes (F7):** `quotes.is_code_mixed(text: str) -> bool` is true when the text contains a `HINGLISH_WORDS` token that isn't in `ENGLISH_COLLISIONS = {"aap", "tab", "ho", "pe", "par", "se", "mat", "bas", "din", "ham", "ji", "jo", "ab"}`. A code-mixed review is never quote-eligible. It is still clustered and counted.
+- **Diagnostics:** `themes.json` gains `"k"` (the cluster count used) and `"other_count"` (reviews in the internal `other` bucket). Both are integers.
+
+- [ ] **Step 1: Write failing tests:**
+  - `test_config_uses_data_tuned_defaults` (`config.yaml` loads with k 8–8, weights `(0.4, 0.5, 0.1)` and `other_threshold` 0.3. `other_threshold` of 1.0 is rejected.)
+  - **F5:** `test_rank_issue_themes_above_generic_praise`. With the real-data shapes (share, neg_share): praise (0.37, 0.19), support (0.11, 0.88), catch-all (0.16, 0.72), requests (0.12, 0.49), chart bug (0.09, 0.51), charges (0.14, 0.41), and the config weights, praise is not in the top 3. The existing `test_rank_prefers_negative_heavy_theme` must still pass.
+  - **F10:** `test_weekly_delta_latest_vs_previous_week` (theme A has 10 of 40 reviews in week W and 4 of 40 in W-1 → `wow_delta` = 0.15) and `test_weekly_delta_none_below_min_reviews`.
+  - **F7 / Review Focus #1:** `test_code_mixed_review_never_quoted` ("Bank nifty ka details not clear, I am facing losses every single day" is never quoted). `test_english_typo_aap_still_quotable` ("worst aap for trading, when buying it always shows a higher price" stays eligible).
+  - **F9:** `test_themes_stage_passes_other_threshold_and_reports_other_count` (in `tests/test_stages.py`. A review unlike every theme lands in `other`, and `themes.json["other_count"] >= 1`.)
+  - **F5:** `test_label_and_merge_prompts_name_praise_once` (both prompt files contain `Ease of Use & Praise`).
+- [ ] **Step 2:** Run `pytest tests/test_rank.py tests/test_quotes.py tests/test_config.py tests/test_stages.py tests/test_extract.py -v`. Expected: FAIL (the new tests only).
+- [ ] **Step 3:** Implement the config, prompt, `weekly_delta`, `is_code_mixed` and diagnostics changes. Update architecture.md §4.4 (taxonomy hints, k = 8 and why) and §4.5 (weights and the in-window weekly delta).
+- [ ] **Step 4:** Run the full suite with `pytest`. Expected: PASS. Existing tests that pin `k_min = 3` for the 4-topic fixture keep passing because they pass k explicitly.
+- [ ] **Step 5 (manual, needs `GROQ_API_KEY`):** Run `pulse run --dry-run` for 2026-W43. Check that `themes.json` has at most 5 themes and at most one praise theme, that praise is not in `top`, that `other_count / total_reviews` ≤ 5%, and that no quote in `quotes.json` is code-mixed.
+- [ ] **Step 6:** Commit: `feat: tune themes, ranking and quotes to real review data`
 
 ---
 
