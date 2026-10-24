@@ -9,7 +9,7 @@ from datetime import date
 from langdetect import DetectorFactory, LangDetectException, detect
 
 from groww_pulse.models import RawReview, Review
-from groww_pulse.privacy.scrubber import HINGLISH_WORDS, scrub_text
+from groww_pulse.privacy.scrubber import HINGLISH_WORDS, redact_user_name, scrub_text
 
 DetectorFactory.seed = 0  # langdetect is randomised; a fixed seed makes tags reproducible
 
@@ -67,12 +67,17 @@ def detect_lang(text: str) -> str:
     return lang
 
 
+def review_id(salt: str, source_review_id: str) -> str:
+    """The stored id: a salted hash, so it can't be traced back to the Play review."""
+    return hashlib.sha256(f"{salt}{SOURCE}{source_review_id}".encode()).hexdigest()
+
+
 def normalize(
     raw: Iterable[RawReview], since: date, until: date, salt: str, min_words: int = MIN_WORDS
 ) -> list[Review]:
     """Scrubbed, emoji-free, deduplicated reviews inside [since, until] with at least `min_words` words.
 
-    User names are never copied.
+    User names are never copied, and a reviewer's own name inside their review is redacted.
     """
     out: list[Review] = []
     seen_ids: set[str] = set()
@@ -81,16 +86,16 @@ def normalize(
         day = r.at.date()
         if not since <= day <= until:
             continue
-        rid = hashlib.sha256(f"{salt}{SOURCE}{r.source_review_id}".encode()).hexdigest()
+        rid = review_id(salt, r.source_review_id)
         if rid in seen_ids:
             continue
-        text = scrub_text(_clean(r.text))
+        text = scrub_text(redact_user_name(_clean(r.text), r.user_name))
         key = _text_key(text)
         if is_noise(text, min_words) or key in seen_texts:
             continue
         seen_texts.add(key)
         seen_ids.add(rid)
-        title = scrub_text(_clean(r.title)) if r.title else None
+        title = scrub_text(redact_user_name(_clean(r.title), r.user_name)) if r.title else None
         out.append(
             Review(
                 id=rid,

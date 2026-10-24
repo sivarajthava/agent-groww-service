@@ -123,6 +123,24 @@ def scrub_text(text: str) -> str:
     return _scrub(text)[0]
 
 
+_NAME_RUN = re.compile(r"\[name\](?:\s+\[name\])+")
+
+
+def redact_user_name(text: str, user_name: str | None) -> str:
+    """Redact the reviewer's own name where they signed the review with it, in any case.
+
+    NER misses these when they are lowercase or next to non-English text. Words of the user name that are
+    short, stop words or review/brand words ("Good Investor", "A Google user") are left alone.
+    """
+    parts = {w for w in re.findall(r"[^\W\d_]+", user_name or "")
+             if len(w) >= 3 and w.lower() not in NOT_NAMES and w.lower() not in STOP_WORDS}
+    if not parts:
+        return text
+    pattern = re.compile(r"(?<![\w'’])(?:" + "|".join(map(re.escape, sorted(parts, key=len, reverse=True)))
+                         + r")(?![\w'’])", re.IGNORECASE)
+    return _NAME_RUN.sub("[name]", pattern.sub("[name]", text))
+
+
 def find_pii(text: str) -> list[str]:
     """Every PII span the scrubber would redact. Redaction tokens themselves never match."""
     return _scrub(text)[1]

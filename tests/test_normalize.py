@@ -154,3 +154,23 @@ def test_detect_lang_english_and_deterministic():
     text = "The app crashes every time I open the portfolio page after the update"
     assert detect_lang(text) == "en"
     assert {detect_lang(text) for _ in range(5)} == {"en"}
+
+
+@pytest.mark.parametrize("user,text,expected", [
+    ("Pranav Patil", "Pranav Patil, I have an awesome experience with this trading app",
+     "[name], I have an awesome experience with this trading app"),
+    ("chandan Das", "chandan Das says the charts are slow and the candles are wrong", "[name] says the charts are slow"),
+    ("Nishant Kumar", "Thanks from Nishant, withdrawal took five days to reach my bank",
+     "Thanks from [name], withdrawal took five days"),
+])
+def test_reviewer_signing_with_own_name_is_redacted(user, text, expected):
+    (r,) = normalize([_raw("gp:1", text, user=user)], SINCE, UNTIL, SALT)
+    assert r.text.startswith(expected)
+    assert all(part.lower() not in r.text.lower() for part in user.split())
+
+
+@pytest.mark.parametrize("user", ["Good Investor", "A Google user", "Happy", "Mr X"])
+def test_user_names_made_of_common_words_do_not_redact_review_words(user):
+    text = "Good app for a happy investor, I use Google pay with it every day"
+    (r,) = normalize([_raw("gp:1", text, user=user)], SINCE, UNTIL, SALT)
+    assert r.text == text
