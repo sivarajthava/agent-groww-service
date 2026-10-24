@@ -89,7 +89,7 @@ def test_review_text_is_wrapped_as_data():
 
 def _extract(reviews, fake=None, prev=()):
     fake = fake or FakeLLM([distinct_labeler])
-    return extract_themes(reviews, HashEmbedder(dim=256), fake, list(prev), max_themes=5), fake
+    return extract_themes(reviews, HashEmbedder(dim=256), fake, list(prev), max_themes=5, k_min=3, k_max=8), fake
 
 
 def test_finds_the_four_topics(topic_reviews):
@@ -163,3 +163,22 @@ def test_no_english_reviews_gives_no_themes(topic_reviews):
 def test_fake_llm_accepts_callable_responders():
     fake = FakeLLM([lambda system, user, schema: {"echo": user}])
     assert fake.complete_json("s", "hello", {}) == {"echo": "hello"}
+
+
+def test_default_k_range_is_6_to_10(topic_reviews, monkeypatch):
+    import groww_pulse.themes.extract as extract_mod
+
+    seen = {}
+    real_cluster = extract_mod.cluster
+
+    def spy(x, **kw):
+        seen.update(kw)
+        labels = real_cluster(x, **kw)
+        seen["k"] = len(set(labels.tolist()))
+        return labels
+
+    monkeypatch.setattr(extract_mod, "cluster", spy)
+    themes, _, _ = extract_themes(topic_reviews, HashEmbedder(dim=256), FakeLLM([distinct_labeler, echo_merger]), [])
+    assert (seen["k_min"], seen["k_max"]) == (6, 10)
+    assert 6 <= seen["k"] <= 10  # finer clusters first; label/merge/fold bring them down to <= 5
+    assert len(themes) <= 5

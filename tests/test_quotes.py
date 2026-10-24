@@ -39,7 +39,7 @@ def test_trim_to_span_is_a_prefix_of_the_text():
 
 @pytest.fixture
 def extracted(topic_reviews):
-    themes, centroids, emb = extract_themes(topic_reviews, HashEmbedder(dim=256), FakeLLM([distinct_labeler]), [])
+    themes, centroids, emb = extract_themes(topic_reviews, HashEmbedder(dim=256), FakeLLM([distinct_labeler]), [], k_min=3, k_max=8)
     return themes, centroids, emb, {r.id: r for r in topic_reviews}
 
 

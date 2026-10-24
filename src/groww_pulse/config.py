@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     min_reviews: int = 30
     max_themes: int = 5
     min_words: int = Field(8, ge=1)  # shorter reviews are dropped at normalization
+    cluster_k_min: int = Field(6, ge=2)  # KMeans k range; finer than max_themes, the LLM merges down
+    cluster_k_max: int = 10
     rank_weights: tuple[float, float, float] = (0.6, 0.3, 0.1)
     model: str = "openai/gpt-oss-120b"
     fallback_model: str = "openai/gpt-oss-20b"
@@ -88,6 +90,8 @@ class Settings(BaseSettings):
             )
         if not 1 <= self.max_themes <= 5:
             raise ValueError(f"max_themes must be between 1 and 5, got {self.max_themes}")
+        if self.cluster_k_min > self.cluster_k_max:
+            raise ValueError(f"cluster_k_min ({self.cluster_k_min}) must be <= cluster_k_max ({self.cluster_k_max})")
         return self
 
 

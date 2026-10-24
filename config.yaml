@@ -8,6 +8,8 @@ max_window_weeks: 12      # window widens to this when there are fewer than min_
 min_reviews: 30
 max_themes: 5             # 1..5; the pulse shows the top 3
 min_words: 8              # reviews with fewer words (after emoji removal) are dropped
+cluster_k_min: 6          # KMeans k range (silhouette picks k); finer than max_themes, the LLM merges down
+cluster_k_max: 10
 rank_weights: [0.6, 0.3, 0.1]   # share, neg_share, positive week-over-week delta
 
 model: openai/gpt-oss-120b

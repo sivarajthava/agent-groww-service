@@ -31,16 +31,20 @@ def extract_themes(
     max_themes: int = 5,
     samples_per_cluster: int = 15,
     other_threshold: float = 0.2,
+    k_min: int = 6,
+    k_max: int = 10,
 ) -> tuple[list[Theme], dict[str, np.ndarray], dict[str, np.ndarray]]:
     """Returns (themes by count desc, centroid by theme_id, embedding by review_id).
 
     Only English, non-noise reviews are clustered. `share` is relative to all `reviews`.
+    Clusters are deliberately finer (k 6–10) than the ≤ max_themes result: on real reviews a small k
+    lumps distinct complaints together, and the LLM can merge clusters but not split them.
     """
     eligible = [r for r in reviews if r.lang == "en" and not is_noise(r.text)]
     if not eligible:
         return [], {}, {}
     x = embedder.encode([r.text for r in eligible])
-    labels = cluster(x)
+    labels = cluster(x, k_min=k_min, k_max=k_max)
 
     found = sorted(set(labels.tolist()))
     big = [c for c in found if (labels == c).sum() >= MIN_CLUSTER_SIZE]

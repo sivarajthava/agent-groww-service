@@ -44,6 +44,7 @@ def test_minimal_config_loads_with_defaults(tmp_path):
     assert s.window_weeks == 10 and s.max_window_weeks == 12
     assert s.max_themes == 5
     assert s.min_words == 8
+    assert (s.cluster_k_min, s.cluster_k_max) == (6, 10)
     assert s.rank_weights == (0.6, 0.3, 0.1)
     assert s.model == "openai/gpt-oss-120b"
     assert s.fallback_model == "openai/gpt-oss-20b"
@@ -97,6 +98,12 @@ def test_settings_rejects_max_themes_above_5(tmp_path):
 def test_settings_rejects_min_words_below_1(tmp_path):
     p = _write(tmp_path, "min_words: 0\nrecipient: a@b.c\n" + MINIMAL_MCP_YAML)
     with pytest.raises(ValidationError, match="min_words"):
+        load_settings(p)
+
+
+def test_settings_rejects_inverted_k_range(tmp_path):
+    p = _write(tmp_path, "cluster_k_min: 9\ncluster_k_max: 7\nrecipient: a@b.c\n" + MINIMAL_MCP_YAML)
+    with pytest.raises(ValidationError, match="cluster_k"):
         load_settings(p)
 
 
