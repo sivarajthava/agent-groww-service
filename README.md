@@ -26,8 +26,15 @@ Then fill in `.env`:
 
 ```bash
 python -m groww_pulse.ingest              # download the last 12 weeks of public reviews to data/raw/
+python -m groww_pulse.stages normalize    # scrub + normalize the latest snapshot into data/reviews.sqlite
+python -m groww_pulse.stages themes       # themes, assignments, quotes -> SQLite, data/runs/<week>/ (needs GROQ_API_KEY)
+python -m groww_pulse.stages pulse        # LLM draft + validators -> data/runs/<week>/pulse.md, run.json
+python -m groww_pulse.stages all          # the three stages in order; add --week YYYY-Www for another week
 pytest                                    # run the test suite
 ```
+
+Each stage reads what the previous one stored, so any stage can be re-run on its own.
+`pulse.md` is written only when every validator passes; otherwise `run.json` lists the failed checks.
 
 `data/` is gitignored. Raw snapshots may contain user names and are purged after 14 days;
 only PII-scrubbed reviews are stored in `data/reviews.sqlite`.

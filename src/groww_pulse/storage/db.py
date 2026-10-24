@@ -93,6 +93,15 @@ class Database:
             )
             return self.conn.execute(count).fetchone()[0] - before
 
+    def delete_reviews(self, ids: list[str]) -> int:
+        """Delete reviews (and their theme assignments); return how many reviews existed."""
+        with self.conn:
+            self.conn.execute("CREATE TEMP TABLE IF NOT EXISTS _gone (id TEXT PRIMARY KEY)")
+            self.conn.execute("DELETE FROM _gone")
+            self.conn.executemany("INSERT OR IGNORE INTO _gone VALUES (?)", [(i,) for i in ids])
+            self.conn.execute("DELETE FROM review_themes WHERE review_id IN (SELECT id FROM _gone)")
+            return self.conn.execute("DELETE FROM reviews WHERE id IN (SELECT id FROM _gone)").rowcount
+
     def reviews_in_window(self, since: date, until: date) -> list[Review]:
         rows = self.conn.execute(
             "SELECT * FROM reviews WHERE date BETWEEN ? AND ? ORDER BY date, id", (since.isoformat(), until.isoformat())
@@ -143,10 +152,13 @@ class Database:
             for r in rows
         ]
 
-    def previous_theme_names(self, week: str) -> list[str]:
-        """Theme names from the latest week before `week` (ISO week strings sort chronologically)."""
+    def previous_themes(self, week: str) -> list[Theme]:
+        """Themes of the latest week before `week` (ISO week strings sort chronologically)."""
         row = self.conn.execute("SELECT MAX(run_week) FROM themes WHERE run_week < ?", (week,)).fetchone()
-        return [t.name for t in self.load_themes(row[0])] if row[0] else []
+        return self.load_themes(row[0]) if row[0] else []
+
+    def previous_theme_names(self, week: str) -> list[str]:
+        return [t.name for t in self.previous_themes(week)]
 
     def save_assignments(self, week: str, rows: list[tuple[str, str, float]]) -> None:
         with self.conn:
