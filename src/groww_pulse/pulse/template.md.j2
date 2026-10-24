@@ -1,0 +1,19 @@
+# Groww — Weekly Review Pulse (Week of {{ week_of }})
+
+Window: {{ start }} – {{ end }} | Reviews analyzed: {{ total_reviews }} | Avg rating: {{ avg_rating }}
+
+## Top Themes
+
+{% for t in themes -%}
+{{ loop.index }}. {{ t.name }} — {{ t.share }}% — {{ t.summary }}
+{% endfor %}
+## What Users Said
+
+{% for q in quotes -%}
+- "{{ q.text }}" (★{{ q.rating }})
+{% endfor %}
+## Action Ideas
+
+{% for a in actions -%}
+{{ loop.index }}. {{ a }}
+{% endfor -%}
