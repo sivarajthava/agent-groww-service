@@ -161,3 +161,15 @@ def test_chat_with_tools_returns_assistant_dict(stub):
     }
     assert s.requests[0]["tools"] == tools
     assert s.requests[0]["tool_choice"] == "auto"
+
+
+def test_groq_client_counts_token_usage(stub):
+    first, second = _message('{"x": 1}'), _message('{"x": 2}')
+    first.usage = SimpleNamespace(prompt_tokens=100, completion_tokens=20)
+    second.usage = SimpleNamespace(prompt_tokens=50, completion_tokens=5)
+    stub([first, second])
+    client = _client()
+    client.complete_json("s", "u", SCHEMA_X)
+    client.complete_json("s", "u", SCHEMA_X)
+    assert client.usage == {"prompt_tokens": 150, "completion_tokens": 25}
+    assert FakeLLM([]).usage == {"prompt_tokens": 0, "completion_tokens": 0}

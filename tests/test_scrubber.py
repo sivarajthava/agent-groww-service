@@ -75,3 +75,24 @@ def test_find_pii_returns_matched_spans():
 
 def test_find_pii_clean_text():
     assert find_pii("withdrawal stuck for 5 days, Groww support is slow") == []
+
+
+def test_pii_spans_give_typed_offsets_into_the_original_text():
+    from groww_pulse.privacy.scrubber import pii_spans
+
+    text = "Hi Rahul, mail rahul.v@gmail.com or call +91 98765 43210; pan ABCDE1234F, upi rv12@okaxis."
+    spans = pii_spans(text)
+    assert [(text[s["start"]:s["end"]], s["type"]) for s in spans] == [
+        ("Rahul", "name"), ("rahul.v@gmail.com", "email"), ("+91 98765 43210", "phone"),
+        ("ABCDE1234F", "pan"), ("rv12@okaxis", "upi")]
+    assert sorted(text[s["start"]:s["end"]] for s in spans) == sorted(find_pii(text))
+    assert pii_spans("my withdrawal took 5 days and cost ₹5000") == []
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("thanks Pooja for fixing my kyc", "thanks [name] for fixing my kyc"),
+    ("Thank you Arjun Menon, issue solved", "Thank you [name], issue solved"),
+    ("thanks Groww team for the quick fix", "thanks Groww team for the quick fix"),
+])
+def test_name_after_thanks_is_redacted(text, expected):
+    assert scrub_text(text) == expected

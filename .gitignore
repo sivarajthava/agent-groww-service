@@ -8,3 +8,4 @@ __pycache__/
 .superpowers/
 evals/reports/*
 !evals/reports/baseline.md
+!evals/reports/baseline.json

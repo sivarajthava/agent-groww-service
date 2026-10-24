@@ -1,4 +1,4 @@
-"""The `pulse` command line: `pulse run`, `pulse publish` and `pulse agent`.
+"""The `pulse` command line: `pulse run`, `pulse publish`, `pulse agent` and `pulse eval`.
 
 Exit codes: 0 for ok / dry_run, 2 for partial (Doc or draft missing), 1 for failed (nothing published).
 Output is one summary line of status, links and flags; it never prints review text.
@@ -13,6 +13,7 @@ import typer
 from groww_pulse.agent.loop import run_agent
 from groww_pulse.agent.tools import AgentTools
 from groww_pulse.config import Settings, load_settings
+from groww_pulse.evals.harness import REPORTS, run_evals, write_report
 from groww_pulse.llm import GroqClient
 from groww_pulse.publish.mcp_client import McpGateway
 from groww_pulse.runner import STAGES, RunContext, RunDeps, RunResult, run_pipeline
@@ -109,6 +110,24 @@ def agent_cmd(
                f"draft_id={result.draft_id or '-'} steps={result.steps}"
                + (f" reason={result.reason}" if result.reason else ""))
     raise typer.Exit(EXIT_CODES[result.status])
+
+
+@app.command("eval")
+def eval_cmd(
+    live: bool = typer.Option(False, "--live", help="Live tier: real Groq writer, judge and agent (needs GROQ_API_KEY)."),
+    repeats: int = typer.Option(3, "--repeats", min=1, help="Live runs to repeat (mean and min are reported)."),
+    report: Path = typer.Option(None, "--report", help="Where to write the Markdown report (JSON goes next to it)."),
+    config: Path = ConfigOpt,
+) -> None:
+    """Run the evals and their threshold gates (evals/thresholds.yaml); exit 1 if any gate fails."""
+    settings = _settings(config)
+    tier = "live" if live else "offline"
+    result = run_evals(settings, tier, repeats)
+    path = write_report(result, report or REPORTS / f"{date.today().isoformat()}-{tier}.md")
+    typer.echo(f"eval {tier}: {'PASS' if result.ok else 'FAIL'} ({len(result.gates)} gates) -> {path}")
+    for failure in result.failures:
+        typer.echo(f"  failed: {failure}")
+    raise typer.Exit(0 if result.ok else 1)
 
 
 if __name__ == "__main__":

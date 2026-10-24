@@ -23,6 +23,10 @@ JUDGE_SCHEMA = {
     "additionalProperties": False,
 }
 
+# Sent to Groq: strict structured outputs may not accept minimum/maximum, so the range is checked locally.
+REQUEST_SCHEMA = {**JUDGE_SCHEMA, "properties": {
+    **JUDGE_SCHEMA["properties"], **{k: {"type": "integer"} for k in ("grounded", "specific_actions", "clarity")}}}
+
 
 @dataclass(frozen=True)
 class JudgeScore:
@@ -42,7 +46,7 @@ def judge_pulse(markdown: str, context: dict, llm: LLMClient) -> JudgeScore:
     """Score one pulse against the data it was written from (the build_context dict with theme snippets)."""
     user = (f"<pulse>\n{markdown}\n</pulse>\n\n"
             f"<context>\n{json.dumps(context, ensure_ascii=False, indent=1)}\n</context>")
-    resp = llm.complete_json(load_prompt("judge_pulse"), user, JUDGE_SCHEMA, reasoning_effort="high")
+    resp = llm.complete_json(load_prompt("judge_pulse"), user, REQUEST_SCHEMA, reasoning_effort="high")
     try:
         jsonschema.validate(resp, JUDGE_SCHEMA)
     except jsonschema.ValidationError as e:

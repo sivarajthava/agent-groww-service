@@ -42,6 +42,7 @@ class GroqClient:
         self.temperature = temperature
         self.max_retries = max_retries
         self.last_model: str | None = None
+        self.usage = {"prompt_tokens": 0, "completion_tokens": 0}  # summed over every successful request
         self._sleep = sleep
         self._client = None
 
@@ -50,13 +51,19 @@ class GroqClient:
             self._client = groq.Groq()
         return self._client
 
+    def _count(self, resp):
+        usage = getattr(resp, "usage", None)
+        for key in self.usage:
+            self.usage[key] += getattr(usage, key, 0) or 0
+        return resp
+
     def _create(self, **kwargs):
         """Try the primary model max_retries times with exponential backoff, then the fallback once."""
         for attempt in range(self.max_retries):
             try:
                 resp = self._groq().chat.completions.create(model=self.model, **kwargs)
                 self.last_model = self.model
-                return resp
+                return self._count(resp)
             except RETRYABLE:
                 if attempt == self.max_retries - 1:
                     if not self.fallback_model:
@@ -65,7 +72,7 @@ class GroqClient:
                 self._sleep(2**attempt)
         resp = self._groq().chat.completions.create(model=self.fallback_model, **kwargs)
         self.last_model = self.fallback_model
-        return resp
+        return self._count(resp)
 
     def complete_json(self, system: str, user: str, schema: dict, reasoning_effort: str | None = None) -> dict:
         resp = self._create(
@@ -117,6 +124,7 @@ class FakeLLM:
         self.efforts: list[str | None] = []
         self.chat_calls: list[list[dict]] = []
         self.last_model = "fake"
+        self.usage = {"prompt_tokens": 0, "completion_tokens": 0}
 
     def _next(self, *request):
         assert self.responses, "FakeLLM: no queued responses left"

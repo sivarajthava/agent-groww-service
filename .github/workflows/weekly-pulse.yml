@@ -3,21 +3,27 @@ name: Weekly review pulse
 on:
   schedule:
     - cron: "30 3 * * 1"   # Mondays 03:30 UTC = 09:00 IST
+  pull_request:            # eval-offline only
   workflow_dispatch:
     inputs:
       week:
         description: "ISO week YYYY-Www (default: current week)"
         required: false
+      live_eval:
+        description: "Also run the live eval (uses GROQ_API_KEY)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: weekly-pulse
+  group: weekly-pulse-${{ github.event_name == 'pull_request' && github.ref || 'scheduled' }}
   cancel-in-progress: false
 
 jobs:
   pulse:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -78,3 +84,60 @@ jobs:
           path: data/runs/
           if-no-files-found: ignore
           retention-days: 30
+
+  # Offline evals: fakes only, no secrets. Gates PII, quote fidelity, structure and the edge-case suite.
+  eval-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PULSE_ID_SALT: eval-offline-salt   # not a secret: offline evals only touch synthetic data
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          pip install -e ".[dev]"
+          python -m spacy download en_core_web_sm
+      - name: Tests
+        run: pytest -q -m "not slow"
+      - name: Offline eval
+        run: pulse eval --report evals/reports/ci-offline.md
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-offline-${{ github.run_id }}
+          path: evals/reports/ci-offline.*
+          if-no-files-found: ignore
+
+  # Live evals: real Groq writer, judge and agent. Weekly, or on demand. Fails on a gate or a regression
+  # of more than 0.05 against the committed evals/reports/baseline.json.
+  eval-live:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.live_eval)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      PULSE_ID_SALT: ${{ secrets.PULSE_ID_SALT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          pip install -e .
+          python -m spacy download en_core_web_sm
+      - name: Live eval
+        run: pulse eval --live --repeats 3 --report evals/reports/ci-live.md
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-live-${{ github.run_id }}
+          path: evals/reports/ci-live.*
+          if-no-files-found: ignore

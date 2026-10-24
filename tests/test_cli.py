@@ -84,7 +84,7 @@ def test_exit_codes_by_status(calls, status, code):
         assert "pulse: validation failed" in result.output
 
 
-@pytest.mark.parametrize("args", [["--help"], ["run", "--help"], ["publish", "--help"], ["agent", "--help"]])
+@pytest.mark.parametrize("args", [["--help"], ["run", "--help"], ["publish", "--help"], ["agent", "--help"], ["eval", "--help"]])
 def test_help_is_ascii(args):
     """Windows consoles default to cp1252; a non-ASCII arrow in help text crashed `pulse --help`."""
     result = runner.invoke(cli.app, args)
@@ -135,3 +135,27 @@ def test_agent_command_defaults_to_current_week_and_rejects_bad_week(monkeypatch
     assert seen == {"week": current_iso_week(date.today()), "goal": None}
     bad = runner.invoke(cli.app, ["agent", "--week", "2026-43"])
     assert bad.exit_code != 0 and "YYYY-Www" in bad.output
+
+
+@pytest.mark.parametrize("ok, code", [(True, 0), (False, 1)])
+def test_eval_command_writes_report_and_exits_by_gates(monkeypatch, tmp_path, ok, code):
+    from groww_pulse.evals.harness import EvalReport
+
+    monkeypatch.setenv("PULSE_ID_SALT", "test-salt")
+    seen = {}
+
+    def fake_run_evals(settings, tier, repeats=3, **kw):
+        seen.update(tier=tier, repeats=repeats)
+        failures = [] if ok else ["judge_grounded: 3.500 >= 4.0 failed"]
+        return EvalReport(tier, {"judge_grounded": 4.5 if ok else 3.5}, {"judge_grounded": ok},
+                          {"prompt_tokens": 1, "completion_tokens": 2, "seconds": 3.0}, failures)
+
+    monkeypatch.setattr(cli, "run_evals", fake_run_evals)
+    report = tmp_path / "out" / "r.md"
+    result = runner.invoke(cli.app, ["eval", "--live", "--repeats", "2", "--report", str(report)])
+    assert result.exit_code == code, result.output
+    assert seen == {"tier": "live", "repeats": 2}
+    assert report.exists() and report.with_suffix(".json").exists()
+    assert ("PASS" if ok else "judge_grounded: 3.500 >= 4.0 failed") in result.output
+    assert runner.invoke(cli.app, ["eval", "--report", str(tmp_path / "o.md")]).exit_code == code
+    assert seen == {"tier": "offline", "repeats": 3}

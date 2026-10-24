@@ -62,7 +62,8 @@ _NAME = r"[A-Z][a-z]+(?!['’\w])(?:\s+[A-Z][a-z]+(?!['’\w]))?"
 # Context rules for names the small model misses ("Hi Rahul", "Sachin from customer care").
 _NAME_CONTEXT = (
     re.compile(
-        r"(?i:\b(?:hi|hello|hey|dear|mr|mrs|ms|miss|dr|sir|agent|executive|representative|advisor|named|called))"
+        r"(?i:\b(?:hi|hello|hey|dear|thanks|thank\s+you|mr|mrs|ms|miss|dr|sir|agent|executive|representative|"
+        r"advisor|named|called))"
         rf"\.?,?\s+({_NAME})"
     ),
     re.compile(rf"(?i:\b(?:spoke|spoken|talked|chatted|speaking)\s+(?:to|with))\s+({_NAME})"),
@@ -144,6 +145,32 @@ def redact_user_name(text: str, user_name: str | None) -> str:
 def find_pii(text: str) -> list[str]:
     """Every PII span the scrubber would redact. Redaction tokens themselves never match."""
     return _scrub(text)[1]
+
+
+_RULE_TYPES = ("email", "pan", "aadhaar", "upi", "phone", "phone", "account")  # parallel to _RULES
+
+
+def pii_spans(text: str) -> list[dict]:
+    """Every span the scrubber redacts, as {start, end, type} offsets into the original text (for evals).
+
+    Runs the same rules in the same order as scrub_text, keeping a map from each character of the
+    partly-redacted text back to the original, so later rules and the name finder see what they see in scrubbing.
+    """
+    starts, ends = list(range(len(text))), list(range(1, len(text) + 1))
+    spans, cur = [], text
+    for (rule, token), kind in zip(_RULES, _RULE_TYPES, strict=True):
+        parts, new_starts, new_ends, last = [], [], [], 0
+        for m in rule.finditer(cur):
+            s, e = m.span()
+            spans.append({"start": starts[s], "end": ends[e - 1], "type": kind})
+            parts += [cur[last:s], token]
+            new_starts += starts[last:s] + [starts[s]] * len(token)
+            new_ends += ends[last:s] + [ends[e - 1]] * len(token)
+            last = e
+        parts.append(cur[last:])
+        cur, starts, ends = "".join(parts), new_starts + starts[last:], new_ends + ends[last:]
+    spans += [{"start": starts[s], "end": ends[e - 1], "type": "name"} for s, e in _name_spans(cur)]
+    return sorted(spans, key=lambda d: d["start"])
 
 
 def find_pattern_pii(text: str) -> list[str]:
