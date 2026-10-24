@@ -241,3 +241,13 @@ def test_llm_unavailable_fails_without_publishing(settings, server):
     assert result.status == "failed" and result.error.startswith("themes: llm_unavailable")
     assert "api_key" not in result.error  # error kind only
     assert server.docs == {} and server.drafts == {}
+
+
+def test_republish_after_partial_clears_failure_flags(settings, server):
+    server.fail_next["create_document"] = RuntimeError("docs down")
+    assert run(settings, server).status == "partial"
+    result = run(settings, server, from_stage="publish")
+    assert result.status == "ok" and result.doc_url
+    rj = run_json(settings)
+    assert rj["status"] == "ok" and not any(f.endswith("_failed") for f in rj["flags"])
+    assert len(server.drafts) == 1  # the partial run's inline draft is updated with the Doc link

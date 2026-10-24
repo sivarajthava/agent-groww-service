@@ -196,7 +196,9 @@ def _publish(ctx: RunContext) -> StageResult:
         run["mcp_calls"] = [c for gw in gws for c in gw.calls]
         _write_run_json(ctx, run)
         return StageResult("publish", False, error=f"publish: {type(e).__name__}: {e}")
-    run.update(doc_url=doc_url, draft_id=draft_id, mcp_calls=calls)
+    # This publish's outcome replaces an earlier attempt's docs_failed / gmail_failed flags.
+    kept = [f for f in run.get("flags", []) if not f.endswith("_failed")]
+    run.update(doc_url=doc_url, draft_id=draft_id, mcp_calls=calls, flags=kept)
     _write_run_json(ctx, run)
     with Database(db_path(ctx.settings)) as db:
         db.record_run(ctx.week, "publishing", doc_url=doc_url, draft_id=draft_id)
