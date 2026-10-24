@@ -1,0 +1,27 @@
+{
+  "name": "groww-pulse-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:fixtures": "cross-env PULSE_DATA_DIR=tests/fixtures/data next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "next": "15.5.4",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "react-markdown": "10.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.6",
+    "@types/react": "19.1.13",
+    "@types/react-dom": "19.1.9",
+    "cross-env": "10.0.0",
+    "typescript": "5.9.2",
+    "vitest": "3.2.4"
+  }
+}

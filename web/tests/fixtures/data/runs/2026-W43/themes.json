@@ -1,0 +1,17 @@
+{
+  "week": "2026-W43",
+  "window": {"start": "2026-08-03", "end": "2026-10-25"},
+  "total_reviews": 2144,
+  "avg_rating": 3.04,
+  "flags": [],
+  "k": 8,
+  "other_count": 61,
+  "top": ["t1", "t2", "t3"],
+  "themes": [
+    {"id": "t1", "name": "Customer Support Delays", "description": "Slow or missing replies on account, KYC and refund tickets.", "count": 407, "share": 0.19, "avg_rating": 1.6, "neg_share": 0.81, "wow_delta": 0.024},
+    {"id": "t2", "name": "Chart Bugs After Update", "description": "Charts lag and navigation breaks after the latest release.", "count": 257, "share": 0.12, "avg_rating": 1.9, "neg_share": 0.74, "wow_delta": 0.051},
+    {"id": "t3", "name": "High Brokerage Charges", "description": "Brokerage and annual fees feel high and unclear.", "count": 214, "share": 0.10, "avg_rating": 2.1, "neg_share": 0.66, "wow_delta": -0.008},
+    {"id": "t4", "name": "Payments & Fund Transfer", "description": "UPI and bank transfers fail or take long to reflect.", "count": 171, "share": 0.08, "avg_rating": 2.3, "neg_share": 0.58, "wow_delta": null},
+    {"id": "t5", "name": "Ease of Use & Praise", "description": "Generic praise for a simple, clean app.", "count": 793, "share": 0.37, "avg_rating": 4.6, "neg_share": 0.04, "wow_delta": -0.012}
+  ]
+}

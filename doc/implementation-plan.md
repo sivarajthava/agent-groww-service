@@ -1002,6 +1002,52 @@ Each case runs the **whole pipeline** (`run_pipeline`, dry-run unless the case i
 
 ---
 
+## Phase 9 — Web Frontend (Next.js, read-only)
+
+A browser view of the weekly runs for Product, Support and Leadership, so nobody has to open `data/runs/` by hand.
+It **reads** the pipeline's artifacts and nothing else: it never runs a stage, calls Groq or talks to MCP.
+
+### Task 9.1: Run viewer in `web/`
+
+**Files:**
+- Create: `web/package.json`, `web/tsconfig.json`, `web/next.config.ts`, `web/vitest.config.ts`, `web/.env.example`
+- Create: `web/lib/types.ts`, `web/lib/runs.ts`, `web/lib/format.ts`
+- Create: `web/app/layout.tsx`, `web/app/page.tsx`, `web/app/runs/[week]/page.tsx`, `web/app/not-found.tsx`, `web/app/globals.css`
+- Create: `web/components/StatusBadge.tsx`, `web/components/ThemeTable.tsx`, `web/components/PulseView.tsx`, `web/components/CopyButton.tsx`
+- Test: `web/tests/runs.test.ts`, fixtures in `web/tests/fixtures/data/runs/{2026-W42,2026-W43}/` (synthetic)
+
+**Interfaces:**
+- Consumes: `data/runs/<week>/{run.json,themes.json,quotes.json,pulse.md}` as written by `stages.py` and `runner.py`.
+  The data dir is `PULSE_DATA_DIR`, defaulting to `../data`.
+- Produces: `listRuns() -> RunSummary[]` (newest first), `getRun(week) -> RunDetail | null`, `isValidWeek(week)`,
+  `wordCount(markdown)` (a port of `pulse/render.py` `word_count`).
+
+**Rules:**
+- Read-only. The Next.js server is the only reader (App Router server components, `force-dynamic`, so new runs show
+  without a rebuild). No client-side file access, no API routes that write.
+- The week route param must match `YYYY-Www` (W01–W53) before any path is built, so it can't escape `runs/`.
+- Quote provenance (`review_id`) is dropped in `getRun`. Only text, star rating and theme reach the page.
+- `pulse.md` is rendered with `react-markdown` with `skipHtml`. Raw HTML in a review never renders.
+- MCP calls show argument keys only, as logged. Status is shown with an icon and a label, never color alone.
+
+**Pages:**
+- `/`: stat tiles for the latest week (status, reviews, avg rating, published count) and a table of all weeks
+  (status, window, reviews, flags, Doc link).
+- `/runs/[week]`: the pulse with a word-count badge (≤ 250) and Copy Markdown; delivery (validation, Doc link,
+  draft id, flags, validation failures); the 3 quotes; all ≤ 5 themes with share bars, 1–2★ share, avg rating and
+  WoW delta, with the top 3 marked; stage counts and timings; audit (model, effort, prompt hashes); MCP calls;
+  agent trace.
+
+- [x] **Step 1:** Write `web/tests/runs.test.ts`: week validation (accepts W01/W43/W53, rejects W00/W54/traversal),
+  `listRuns` order and skipping of non-week folders, an empty list when `runs/` is missing, a full week, a week that
+  stopped before themes, no `review_id` in any result, and `wordCount` parity with the Python rule.
+- [x] **Step 2:** Implement `lib/` and the pages. `npm test` → PASS (19 tests).
+- [x] **Step 3:** `npm run build` → PASS (type-checks). `npm run dev:fixtures`, then check `/`, `/runs/2026-W43`,
+  `/runs/2026-W42` (failed run, no pulse) and 404 for `/runs/2026-W01`, at 1280 px and at 375 px.
+- [x] **Step 4:** CI: the `web` job in `weekly-pulse.yml` runs `npm ci`, `npm test` and `npm run build` on PRs.
+
+---
+
 ## Requirement → Task Coverage
 
 | Requirement | Task(s) |
@@ -1024,3 +1070,4 @@ Each case runs the **whole pipeline** (`run_pipeline`, dry-run unless the case i
 | Output quality measured (themes, quotes, actions) | 8.1, 8.2, 8.3, 8.6 |
 | No PII: measured precision/recall, not just unit cases | 8.1 (`pii_seeded`), 8.2, 8.3 gate |
 | Robust to hostile and unusual input | 8.4 (injection), 8.5 (E1–E33) |
+| Team can read the pulse and run health without raw files | 9.1 |

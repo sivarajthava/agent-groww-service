@@ -572,6 +572,25 @@ sequenceDiagram
 - Hitting a limit ends the run as `failed` with the reason `agent_step_limit`, and nothing more is published.
 - If Groq is unavailable, the agent stops and tells the user to run `pulse run` instead.
 
+### 4.11 Web Frontend (`web/`, Next.js, read-only)
+
+A Next.js (App Router, TypeScript) app that shows the weekly runs in a browser. It sits **after** the pipeline
+and only reads its output:
+
+```mermaid
+flowchart LR
+    OUT[("data/runs/&lt;week&gt;/<br/>run.json · themes.json<br/>quotes.json · pulse.md")] --> LIB["web/lib/runs.ts<br/>server only · week id checked"]
+    LIB --> P1["/ <br/>all weeks + latest stats"]
+    LIB --> P2["/runs/[week]<br/>pulse · themes · quotes ·<br/>delivery · MCP calls · agent trace"]
+```
+
+- **Read-only.** It runs no stage, holds no Groq key and never talks to MCP. Publishing stays in `pulse run`,
+  `pulse publish` and `pulse agent`.
+- **Privacy.** Files are read on the server. Quote provenance (`review_id`) is dropped before rendering, MCP calls
+  show argument keys only, and `pulse.md` is rendered without raw HTML.
+- **Path safety.** The week param must match `YYYY-Www` before any file path is built.
+- **Config.** `PULSE_DATA_DIR` points at the data dir (default `../data`).
+
 ---
 
 ## 5. Data Flow & Storage
@@ -833,6 +852,7 @@ Each case runs **the whole pipeline** with fakes, in dry-run unless the case is 
 | Gmail draft via MCP | §4.9 publisher (draft-only allowlist) |
 | No bespoke OAuth/REST | §4.9 auth delegated to MCP, §8 |
 | Agent-based workflow (optional) | §4.10 agent runtime: the same tools, gated writes |
+| A team can read the pulse quickly | §4.11 read-only web frontend |
 | Output quality is measured, not assumed | §9.1 evaluation tiers, metrics, LLM judge, gates |
 | Robust to unusual and hostile input | §9.2 edge cases, §8 prompt-injection defense |
 

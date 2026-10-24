@@ -106,6 +106,23 @@ model explain what happened. The scheduled weekly job keeps using the determinis
 - The status comes from the tool results, never from the model's own text.
 - If Groq is unavailable, the agent stops and tells you to run `pulse run` instead.
 
+## Web frontend (`web/`)
+
+A read-only Next.js app for browsing the weekly runs: the pulse, the themes with their shares, the quotes,
+validation, delivery (Doc link, draft id), MCP calls and the agent trace. It reads `data/runs/` and never publishes
+or calls a model. Needs Node 20+.
+
+```bash
+cd web
+npm install
+npm run dev              # http://localhost:3000, reads ../data/runs
+npm run dev:fixtures     # same UI on the synthetic runs in web/tests/fixtures
+npm test                 # data-layer tests
+npm run build && npm start
+```
+
+Set `PULSE_DATA_DIR` to read runs from another directory.
+
 ## Scheduling (Mondays 09:00 IST)
 
 - **Windows:** `.\scripts\schedule_windows.ps1` registers a Task Scheduler job that runs `pulse run` from the repo

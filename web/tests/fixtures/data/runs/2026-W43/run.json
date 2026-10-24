@@ -1,0 +1,30 @@
+{
+  "week": "2026-W43",
+  "window": {"start": "2026-08-03", "end": "2026-10-25"},
+  "flags": [],
+  "counts": {"reviews": 2144, "themes": 5, "quotes": 3},
+  "model": "openai/gpt-oss-120b",
+  "reasoning_effort": "medium",
+  "prompts": {"label_themes": "9f2c1d0a", "merge_themes": "41be77c3", "write_pulse": "d07a5e19"},
+  "validation": {"ok": true, "failures": []},
+  "status": "ok",
+  "error": null,
+  "timings": {"ingest": 12.41, "normalize": 3.208, "themes": 28.77, "pulse": 9.514, "publish": 4.02},
+  "stages": {"ingest": {"fetched": 2310}, "normalize": {"raw": 2310, "kept": 2144, "new": 188, "removed": 166}, "themes": {"reviews": 2144, "themes": 5, "top": 3, "quotes": 3}, "pulse": {"words": 169}, "publish": {"doc": 1, "draft": 1}},
+  "doc_url": "https://docs.google.com/document/d/FIXTURE_DOC/edit",
+  "draft_id": "r-fixture-draft",
+  "publish_errors": [],
+  "mcp_calls": [
+    {"server": "docs", "action": "find_doc", "tool": "search_documents", "arg_keys": ["query"], "ms": 412, "ok": true, "error": null},
+    {"server": "docs", "action": "update_doc", "tool": "update_document", "arg_keys": ["content", "documentId"], "ms": 980, "ok": true, "error": null},
+    {"server": "gmail", "action": "list_drafts", "tool": "list_drafts", "arg_keys": ["query"], "ms": 301, "ok": true, "error": null},
+    {"server": "gmail", "action": "create_draft", "tool": "create_draft", "arg_keys": ["body", "htmlBody", "subject", "to"], "ms": 655, "ok": true, "error": null}
+  ],
+  "agent_status": "ok",
+  "agent_reason": null,
+  "agent_trace": [
+    {"step": 1, "tool": "get_run_report", "args": {"week": "2026-W43"}, "ok": true, "ms": 3},
+    {"step": 2, "tool": "publish_doc", "args": {"week": "2026-W43"}, "ok": true, "ms": 1402},
+    {"step": 3, "tool": "upsert_gmail_draft", "args": {"week": "2026-W43"}, "ok": true, "ms": 966}
+  ]
+}

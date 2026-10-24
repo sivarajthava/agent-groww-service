@@ -1,0 +1,13 @@
+{
+  "week": "2026-W42",
+  "window": {"start": "2026-07-27", "end": "2026-10-18"},
+  "flags": ["low_volume"],
+  "counts": {"reviews": 1987, "themes": 5, "quotes": 3},
+  "model": "openai/gpt-oss-20b",
+  "reasoning_effort": "medium",
+  "validation": {"ok": false, "failures": ["word_count: 274 > 250"]},
+  "status": "failed",
+  "error": "pulse: ValidationFailed: word_count: 274 > 250",
+  "timings": {"ingest": 11.9, "normalize": 3.1, "themes": 27.2, "pulse": 21.6},
+  "stages": {"ingest": {"fetched": 2101}, "normalize": {"raw": 2101, "kept": 1987, "new": 201, "removed": 114}, "themes": {"reviews": 1987, "themes": 5, "top": 3, "quotes": 3}}
+}
