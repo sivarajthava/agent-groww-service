@@ -1,0 +1,47 @@
+# Groww Weekly Review Pulse configuration. Secrets live in .env, never here.
+app_id: com.nextbillion.groww
+lang: en
+country: in
+
+window_weeks: 10          # 8..12
+max_window_weeks: 12      # window widens to this when there are fewer than min_reviews usable reviews
+min_reviews: 30
+max_themes: 5             # 1..5; the pulse shows the top 3
+rank_weights: [0.6, 0.3, 0.1]   # share, neg_share, positive week-over-week delta
+
+model: openai/gpt-oss-120b
+fallback_model: openai/gpt-oss-20b
+reasoning_effort: medium
+temperature: 0.2
+
+data_dir: data
+recipient: "me+groww-pulse@example.com"
+
+agent:
+  max_steps: 12
+  max_repeat: 3
+  reasoning_effort: medium
+
+# Code calls only logical actions; real MCP tool and parameter names live here.
+mcp:
+  timeout_s: 30
+  docs:
+    transport: stdio                     # or "http" (then: url + header_env)
+    command: npx
+    args: ["-y", "<google-docs-mcp-server>"]
+    tools:
+      find_doc:   {name: search_documents, args: {title: query}}
+      create_doc: {name: create_document,  args: {title: title, body: content},
+                   result: {id: documentId, url: url}}
+      update_doc: {name: update_document,  args: {doc_id: documentId, body: content}}
+    allowlist: [find_doc, create_doc, update_doc]
+  gmail:
+    transport: http
+    url: "https://<gmail-mcp-host>/mcp"
+    header_env: {Authorization: GMAIL_MCP_AUTH}   # env var name, not the value
+    tools:
+      list_drafts:  {name: list_drafts,  args: {subject: query}}
+      create_draft: {name: create_draft, args: {to: to, subject: subject, body: body, html: htmlBody},
+                     result: {id: draftId}}
+      update_draft: {name: update_draft, args: {draft_id: draftId, body: body, html: htmlBody}}
+    allowlist: [list_drafts, create_draft, update_draft]   # no send_message
