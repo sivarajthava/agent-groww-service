@@ -57,7 +57,8 @@ class AgentConfig(BaseModel):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
+    # The PULSE_ prefix keeps generic OS variables (LANG, MODEL, ...) from overriding settings.
+    model_config = SettingsConfigDict(env_prefix="PULSE_", env_file=".env", extra="ignore", populate_by_name=True)
 
     app_id: str = "com.nextbillion.groww"
     lang: str = "en"

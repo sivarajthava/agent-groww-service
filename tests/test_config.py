@@ -54,6 +54,14 @@ def test_minimal_config_loads_with_defaults(tmp_path):
     assert s.agent.max_steps == 12 and s.agent.max_repeat == 3
 
 
+def test_generic_os_env_vars_do_not_override_settings(tmp_path, monkeypatch):
+    monkeypatch.setenv("LANG", "en_US.UTF-8")
+    monkeypatch.setenv("MODEL", "some-other-model")
+    s = load_settings(_write(tmp_path, "recipient: a@b.c\n" + MINIMAL_MCP_YAML))
+    assert s.lang == "en"
+    assert s.model == "openai/gpt-oss-120b"
+
+
 def test_repo_config_yaml_is_valid():
     s = load_settings(Path(__file__).parent.parent / "config.yaml")
     assert set(s.mcp.docs.allowlist) == {"find_doc", "create_doc", "update_doc"}
