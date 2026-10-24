@@ -84,8 +84,54 @@ def test_exit_codes_by_status(calls, status, code):
         assert "pulse: validation failed" in result.output
 
 
-@pytest.mark.parametrize("args", [["--help"], ["run", "--help"], ["publish", "--help"]])
+@pytest.mark.parametrize("args", [["--help"], ["run", "--help"], ["publish", "--help"], ["agent", "--help"]])
 def test_help_is_ascii(args):
     """Windows consoles default to cp1252; a non-ASCII arrow in help text crashed `pulse --help`."""
     result = runner.invoke(cli.app, args)
     assert result.exit_code == 0 and result.output.isascii()
+
+
+@pytest.mark.parametrize("status, code", [("ok", 0), ("partial", 2), ("failed", 1)])
+def test_agent_command_wires_and_exits_by_status(monkeypatch, status, code):
+    from groww_pulse.agent.loop import AgentResult
+    from groww_pulse.llm import GroqClient
+    from groww_pulse.publish.mcp_client import McpGateway
+
+    monkeypatch.setenv("PULSE_ID_SALT", "test-salt")
+    seen = {}
+
+    async def fake_run_agent(ctx, llm, tools, goal=None):
+        seen.update(ctx=ctx, llm=llm, tools=tools, goal=goal)
+        return AgentResult(ctx.week, status, "Outcome: published.\nRan: pulse.\nProblems: none.",
+                           "https://docs.example.com/d/doc1" if status != "failed" else None,
+                           "draft1" if status == "ok" else None, 5, [],
+                           "agent_step_limit" if status == "failed" else None)
+
+    monkeypatch.setattr(cli, "run_agent", fake_run_agent)
+    result = runner.invoke(cli.app, ["agent", "--week", "2026-W43", "--goal", "Re-publish only"])
+    assert result.exit_code == code, result.output
+    assert "Outcome: published." in result.output and f"status={status}" in result.output
+    assert seen["ctx"].week == "2026-W43" and seen["goal"] == "Re-publish only"
+    assert isinstance(seen["llm"], GroqClient) and seen["ctx"].deps.llm is seen["llm"]  # stages use the same client
+    gw = seen["tools"].gateway_factory("docs")
+    assert isinstance(gw, McpGateway) and gw.name == "docs" and gw.server == seen["ctx"].settings.mcp.docs
+    assert seen["tools"].gateway_factory("gmail").server == seen["ctx"].settings.mcp.gmail
+    if status == "failed":
+        assert "agent_step_limit" in result.output
+
+
+def test_agent_command_defaults_to_current_week_and_rejects_bad_week(monkeypatch):
+    monkeypatch.setenv("PULSE_ID_SALT", "test-salt")
+    seen = {}
+
+    async def fake_run_agent(ctx, llm, tools, goal=None):
+        from groww_pulse.agent.loop import AgentResult
+
+        seen["week"], seen["goal"] = ctx.week, goal
+        return AgentResult(ctx.week, "ok", "done", None, None, 1, [])
+
+    monkeypatch.setattr(cli, "run_agent", fake_run_agent)
+    assert runner.invoke(cli.app, ["agent"]).exit_code == 0
+    assert seen == {"week": current_iso_week(date.today()), "goal": None}
+    bad = runner.invoke(cli.app, ["agent", "--week", "2026-43"])
+    assert bad.exit_code != 0 and "YYYY-Www" in bad.output

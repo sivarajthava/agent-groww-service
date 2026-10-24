@@ -54,6 +54,7 @@ pulse run                           # the same, then publishes the Google Doc an
 pulse run --week 2026-W43           # a specific ISO week (YYYY-Www)
 pulse run --stage pulse             # resume from a stage: ingest, normalize, themes, pulse, publish
 pulse publish --week 2026-W43       # publish an already validated pulse.md (same as run --stage publish)
+pulse agent                         # the same steps, chosen by a Groq model (see Agent mode)
 pytest                              # run the test suite
 ```
 
@@ -79,6 +80,31 @@ snapshot, and `python -m groww_pulse.stages {normalize,themes,pulse,all}` runs t
 
 `data/` is gitignored. Raw snapshots may contain user names and are purged after 14 days;
 only PII-scrubbed reviews are stored in `data/reviews.sqlite`.
+
+## Agent mode (`pulse agent`)
+
+```bash
+pulse agent                                   # this week: check the run report, run what's missing, publish
+pulse agent --week 2026-W43 --goal "The Doc failed last time; re-publish it and fix the draft link"
+```
+
+`pulse agent` runs the same pipeline, but a Groq model (`openai/gpt-oss-120b`) decides **which step to run
+next** through tool calling. It reads the week's run report, reuses completed stages, runs the missing ones,
+publishes the Doc and then the draft, and ends with a 3-line summary plus the usual status line and exit code
+(0 ok, 2 partial, 1 failed). Every step is recorded in `data/runs/<week>/run.json` under `agent_trace`.
+
+**When to use it:** interactive or recovery runs, e.g. after a `partial` run, to re-publish, or to have the
+model explain what happened. The scheduled weekly job keeps using the deterministic `pulse run`.
+
+**Guardrails** (enforced in code, not in the prompt):
+
+- The model never sees raw MCP tools. It has five tools — `get_run_report`, `run_stage`, `get_pulse`,
+  `publish_doc`, `upsert_gmail_draft` — that take only the week (and a stage name), and only the run's own week.
+- The write tools publish the validated `pulse.md` from disk and refuse until validation has passed, so the
+  model can't change the content, add PII, or publish an unvalidated pulse. Gmail stays draft-only.
+- At most 12 model steps, and the same call at most 3 times in a row; hitting a limit ends the run as `failed`.
+- The status comes from the tool results, never from the model's own text.
+- If Groq is unavailable, the agent stops and tells you to run `pulse run` instead.
 
 ## Scheduling (Mondays 09:00 IST)
 
