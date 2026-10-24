@@ -43,9 +43,13 @@ def _pii_spans(pulse: Pulse) -> list[str]:
 
 
 def validate(
-    pulse: Pulse, reviews_by_id: dict[str, Review], max_words: int = 250, doc_url: str | None = None
+    pulse: Pulse, reviews_by_id: dict[str, Review], max_words: int = 250, doc_url: str | None = None,
+    n_themes: int = 3,
 ) -> ValidationResult:
-    """Every check from architecture.md §4.8. Failure messages name the check and never echo PII values."""
+    """Every check from architecture.md §4.8. Failure messages name the check and never echo PII values.
+
+    `n_themes` is 3 except for a reduced pulse (fewer themes found, flagged `few_themes` by the themes stage).
+    """
     failures: list[str] = []
     md = pulse.markdown
 
@@ -55,9 +59,10 @@ def validate(
         elif f'"{q.text}"' not in md:
             failures.append(f"quote_fidelity: quote {i} missing from the pulse")
 
-    for name, items in (("themes", pulse.themes), ("quotes", pulse.quotes), ("actions", pulse.draft.actions)):
-        if len(items) != 3:
-            failures.append(f"{name}: {len(items)} != 3")
+    for name, items, want in (("themes", pulse.themes, n_themes), ("themes", pulse.draft.theme_summaries, n_themes),
+                              ("quotes", pulse.quotes, 3), ("actions", pulse.draft.actions, 3)):
+        if len(items) != want:
+            failures.append(f"{name}: {len(items)} != {want}")
 
     names = [t.name.lower() for t in pulse.themes]
     for i, action in enumerate(pulse.draft.actions, 1):
@@ -91,7 +96,8 @@ def _cut(summary: str, n: int = SUMMARY_FALLBACK_WORDS) -> str:
 
 
 def generate_valid_pulse(
-    ctx: dict, llm: LLMClient, render_args: dict, reviews_by_id: dict[str, Review], max_retries: int = 2
+    ctx: dict, llm: LLMClient, render_args: dict, reviews_by_id: dict[str, Review], max_retries: int = 2,
+    n_themes: int = 3,
 ) -> Pulse:
     """generate → render → validate, regenerating with validator feedback on soft failures.
 
@@ -107,7 +113,7 @@ def generate_valid_pulse(
             feedback = str(e)
             continue
         pulse = _build(draft, render_args)
-        result = validate(pulse, reviews_by_id, max_words=ctx.get("word_budget", 250))
+        result = validate(pulse, reviews_by_id, max_words=ctx.get("word_budget", 250), n_themes=n_themes)
         if result.ok:
             return pulse
         if _is_hard(result):
@@ -117,7 +123,7 @@ def generate_valid_pulse(
     if draft is not None and all(f.startswith("word_count:") for f in result.failures):
         draft = replace(draft, theme_summaries=tuple(_cut(s) for s in draft.theme_summaries))
         pulse = _build(draft, render_args)
-        result = validate(pulse, reviews_by_id, max_words=ctx.get("word_budget", 250))
+        result = validate(pulse, reviews_by_id, max_words=ctx.get("word_budget", 250), n_themes=n_themes)
         if result.ok:
             return pulse
     raise ValidationFailed(result)

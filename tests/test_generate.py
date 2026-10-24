@@ -94,3 +94,13 @@ def test_generate_rejects_non_dict_response(bad):
 
 def test_draft_contract_error_is_a_contract_error():
     assert issubclass(DraftContractError, LLMContractError)
+
+
+def test_reduced_context_takes_one_summary_per_theme():
+    """Review Focus #2: with fewer than 3 themes the draft has one summary per theme and still 3 actions."""
+    ctx = build_context(WEEK, WINDOW, TOTAL, AVG, TOP[:1], QUOTES, BY_ID)
+    actions = [f"{TOP[0].name}: step {i}" for i in range(3)]
+    draft = generate_draft(ctx, FakeLLM([{"theme_summaries": ["Money is stuck."], "actions": actions}]))
+    assert draft.theme_summaries == ("Money is stuck.",) and len(draft.actions) == 3
+    with pytest.raises(DraftContractError, match="expected 1"):
+        generate_draft(ctx, FakeLLM([DRAFT_JSON]))

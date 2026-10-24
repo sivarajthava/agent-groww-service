@@ -7,6 +7,7 @@ import numpy as np
 from groww_pulse.models import Quote, Review, Theme
 
 MIN_QUOTE_WORDS, MAX_QUOTE_WORDS = 8, 40
+QUOTE_COUNT = 3  # the pulse always has exactly 3 quotes, even with fewer than 3 themes
 _SENTENCE_END = re.compile(r"[.!?]+[\"')\]]*(?=\s|$)")
 
 
@@ -46,10 +47,10 @@ def select_quotes(
     emb_by_id: dict[str, np.ndarray],
     centroids: dict[str, np.ndarray],
 ) -> list[Quote]:
-    """One quote per theme in `top` order: the most typical eligible review, matching the theme's sentiment.
+    """3 quotes: one per theme in `top` order, the most typical eligible review matching the theme's sentiment.
 
-    A theme with no eligible review gets the next-best unused review of any top theme; that quote's
-    theme_id names the theme it really came from.
+    A theme with no eligible review, and any slot beyond the number of themes (a reduced pulse), gets the
+    next-best unused review of any top theme; that quote's theme_id names the theme it really came from.
     """
     candidates: dict[str, list[tuple[float, str, str]]] = {}  # theme_id -> [(similarity, review_id, text)]
     for t in top:
@@ -63,7 +64,7 @@ def select_quotes(
 
     used: set[str] = set()
     slots: list[Quote | None] = []
-    for t in top:
+    for t in top[:QUOTE_COUNT]:
         want_neg = t.neg_share >= 0.5
         rows = [row for row in candidates[t.id] if row[1] not in used]
         preferred = [row for row in rows if (reviews_by_id[row[1]].rating <= 2 if want_neg
@@ -74,6 +75,7 @@ def select_quotes(
             slots.append(Quote(pick[2], reviews_by_id[pick[1]].rating, pick[1], t.id))
         else:
             slots.append(None)
+    slots += [None] * (QUOTE_COUNT - len(slots))
 
     for i, q in enumerate(slots):
         if q is None:
@@ -87,9 +89,9 @@ def select_quotes(
                 slots[i] = Quote(text, reviews_by_id[rid].rating, rid, tid)
 
     quotes = [q for q in slots if q]
-    if len(quotes) < len(top):
+    if len(quotes) < QUOTE_COUNT:
         raise NotEnoughQuotes(
-            f"found {len(quotes)} of {len(top)} quotes: top themes lack English reviews of "
+            f"found {len(quotes)} of {QUOTE_COUNT} quotes: top themes lack English reviews of "
             f"{MIN_QUOTE_WORDS}-{MAX_QUOTE_WORDS} words"
         )
     return quotes

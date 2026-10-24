@@ -100,7 +100,12 @@ def test_non_english_never_quoted():
                make_review("a3", LONG_NEG, 1)]
     t = _theme("a", ["a1", "a2", "a3"])
     by_id, emb, cents = _setup(reviews, [t])
-    assert [q.review_id for q in select_quotes([t], by_id, emb, cents)] == ["a3"]
+    with pytest.raises(NotEnoughQuotes, match="1 of 3"):  # the Hindi/Hinglish reviews never fill a slot
+        select_quotes([t], by_id, emb, cents)
+    reviews += [make_review("a4", LONG_NEG + " again", 1), make_review("a5", LONG_NEG + " still", 1)]
+    t = _theme("a", ["a1", "a2", "a3", "a4", "a5"])
+    by_id, emb, cents = _setup(reviews, [t])
+    assert {q.review_id for q in select_quotes([t], by_id, emb, cents)} == {"a3", "a4", "a5"}
 
 
 def test_fallback_when_theme_has_no_eligible_quote():
@@ -124,7 +129,18 @@ def test_raises_when_three_quotes_impossible():
 
 
 def test_falls_back_to_other_sentiment_when_none_preferred():
-    reviews = [make_review("a1", LONG_NEG.replace("nobody replies", "it is fine now"), 5)]
-    t = _theme("a", ["a1"], neg=0.9)
+    fine = LONG_NEG.replace("nobody replies", "it is fine now")
+    reviews = [make_review(f"a{i}", fine + " ok" * i, 5) for i in range(3)]
+    t = _theme("a", [r.id for r in reviews], neg=0.9)
     by_id, emb, cents = _setup(reviews, [t])
-    assert select_quotes([t], by_id, emb, cents)[0].review_id == "a1"
+    quotes = select_quotes([t], by_id, emb, cents)
+    assert [q.rating for q in quotes] == [5, 5, 5]
+
+
+def test_reduced_pulse_takes_three_quotes_from_fewer_themes():
+    """A single theme (tiny data set) still yields 3 distinct quotes, all tagged with that theme."""
+    reviews = [make_review(f"a{i}", LONG_NEG + " again" * i, 1) for i in range(4)]
+    t = _theme("a", [r.id for r in reviews])
+    by_id, emb, cents = _setup(reviews, [t])
+    quotes = select_quotes([t], by_id, emb, cents)
+    assert len({q.review_id for q in quotes}) == 3 and {q.theme_id for q in quotes} == {"a"}

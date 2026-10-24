@@ -172,3 +172,11 @@ def test_hard_failure_raises_without_retry():
     with pytest.raises(ValidationFailed, match="quote_fidelity"):
         generate_valid_pulse(_ctx(), fake, {**RENDER_ARGS, "quotes": [q0, *QUOTES[1:]]}, BY_ID)
     assert len(fake.calls) == 1
+
+
+def test_reduced_pulse_valid_only_when_expected():
+    """Review Focus #2: a 1-theme pulse with 3 quotes passes with n_themes=1, never by default."""
+    draft = _draft(summaries=DRAFT.theme_summaries[:1], actions=[f"{TOP[0].name}: step {i}." for i in range(3)])
+    pulse = _pulse(draft=draft, top=TOP[:1])
+    assert validate(pulse, BY_ID, n_themes=1).ok
+    assert "themes" in _checks(validate(pulse, BY_ID))

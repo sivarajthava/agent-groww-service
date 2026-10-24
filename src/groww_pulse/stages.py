@@ -158,7 +158,9 @@ def pulse_stage(settings: Settings, week: str, db: Database, llm: LLMClient, max
            "prompts": {p: prompt_sha256(p) for p in PROMPTS}}
     pulse_md = out / "pulse.md"
     try:
-        pulse = generate_valid_pulse(ctx, llm, render_args, reviews_by_id)
+        # A reduced pulse (fewer than 3 themes) is allowed only when the themes stage flagged it.
+        n_themes = min(len(top), 3) if "few_themes" in meta["flags"] else 3
+        pulse = generate_valid_pulse(ctx, llm, render_args, reviews_by_id, n_themes=n_themes)
     except ValidationFailed as e:
         pulse_md.unlink(missing_ok=True)  # never leave an older, now-unvalidated pulse behind
         run.update(model=llm.last_model, validation={"ok": False, "failures": list(e.result.failures)},

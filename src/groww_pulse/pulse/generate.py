@@ -25,7 +25,7 @@ DRAFT_SCHEMA = {
 
 
 class DraftContractError(LLMContractError):
-    """The draft didn't have exactly 3 summaries and 3 actions, all strings."""
+    """The draft didn't have one summary per theme (3 normally) and exactly 3 actions, all strings."""
 
 
 def build_context(
@@ -85,11 +85,11 @@ def build_context(
     }
 
 
-def _three_strings(resp: dict, key: str) -> tuple[str, str, str]:
+def _strings(resp: dict, key: str, n: int) -> tuple[str, ...]:
     items = resp.get(key)
-    if not isinstance(items, list) or len(items) != 3 or not all(isinstance(s, str) and s.strip() for s in items):
+    if not isinstance(items, list) or len(items) != n or not all(isinstance(s, str) and s.strip() for s in items):
         got = len(items) if isinstance(items, list) else type(items).__name__
-        raise DraftContractError(f"{key}: expected 3 non-empty strings, got {got}")
+        raise DraftContractError(f"{key}: expected {n} non-empty strings, got {got}")
     return tuple(s.strip() for s in items)
 
 
@@ -100,4 +100,6 @@ def generate_draft(ctx: dict, llm: LLMClient, feedback: str | None = None) -> Pu
     resp = llm.complete_json(load_prompt("write_pulse"), user, DRAFT_SCHEMA)
     if not isinstance(resp, dict):
         raise DraftContractError(f"expected a JSON object, got {type(resp).__name__}")
-    return PulseDraft(theme_summaries=_three_strings(resp, "theme_summaries"), actions=_three_strings(resp, "actions"))
+    # One summary per theme in the context: 3, or fewer in a reduced pulse (flag few_themes). Always 3 actions.
+    return PulseDraft(theme_summaries=_strings(resp, "theme_summaries", len(ctx["themes"])),
+                      actions=_strings(resp, "actions", 3))
