@@ -105,27 +105,31 @@ class GroqClient:
 
 
 class FakeLLM:
-    """Serves queued responses (or raises queued exceptions) in order and records what it received."""
+    """Serves queued responses (or raises queued exceptions) in order and records what it received.
 
-    def __init__(self, responses: list[dict | Exception]):
+    A queued callable is called with the request (system, user, schema) or (messages, tools) and its
+    return value is the response, for tests whose prompt content isn't known in advance.
+    """
+
+    def __init__(self, responses: list[dict | Exception | Callable]):
         self.responses = list(responses)
         self.calls: list[tuple[str, str]] = []
         self.efforts: list[str | None] = []
         self.chat_calls: list[list[dict]] = []
         self.last_model = "fake"
 
-    def _next(self):
+    def _next(self, *request):
         assert self.responses, "FakeLLM: no queued responses left"
         item = self.responses.pop(0)
         if isinstance(item, Exception):
             raise item
-        return item
+        return item(*request) if callable(item) else item
 
     def complete_json(self, system: str, user: str, schema: dict, reasoning_effort: str | None = None) -> dict:
         self.calls.append((system, user))
         self.efforts.append(reasoning_effort)
-        return self._next()
+        return self._next(system, user, schema)
 
     def chat_with_tools(self, messages: list[dict], tools: list[dict], reasoning_effort: str | None = None) -> dict:
         self.chat_calls.append(list(messages))
-        return self._next()
+        return self._next(messages, tools)
