@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     max_window_weeks: int = 12
     min_reviews: int = 30
     max_themes: int = 5
+    min_words: int = Field(8, ge=1)  # shorter reviews are dropped at normalization
     rank_weights: tuple[float, float, float] = (0.6, 0.3, 0.1)
     model: str = "openai/gpt-oss-120b"
     fallback_model: str = "openai/gpt-oss-20b"

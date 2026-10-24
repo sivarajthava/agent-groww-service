@@ -15,8 +15,11 @@ def _raw(rid: str, text: str, at=datetime(2026, 10, 1, 9, 0), rating=2, user="Ra
     return RawReview(rid, rating, title, text, at, "15.2.0", user)
 
 
+LONG = "my withdrawal has been stuck for five days now"  # 9 words
+
+
 def test_id_is_salted_hash_of_source_id():
-    (r,) = normalize([_raw("gp:1", "withdrawal is stuck for days")], SINCE, UNTIL, SALT)
+    (r,) = normalize([_raw("gp:1", LONG)], SINCE, UNTIL, SALT)
     assert r.id == hashlib.sha256(f"{SALT}play_storegp:1".encode()).hexdigest()
     assert r.source == "play_store"
     assert r.date == date(2026, 10, 1)
@@ -25,60 +28,96 @@ def test_id_is_salted_hash_of_source_id():
 
 def test_drops_out_of_window():
     raws = [
-        _raw("gp:1", "too old to keep in window", at=datetime(2026, 8, 16, 23, 59)),
-        _raw("gp:2", "first day of the window", at=datetime(2026, 8, 17, 0, 0)),
-        _raw("gp:3", "last day of the window", at=datetime(2026, 10, 25, 23, 59)),
-        _raw("gp:4", "too new to keep in window", at=datetime(2026, 10, 26, 0, 0)),
+        _raw("gp:1", "too old to keep, this review is outside the window", at=datetime(2026, 8, 16, 23, 59)),
+        _raw("gp:2", "first day of the window, this review must be kept", at=datetime(2026, 8, 17, 0, 0)),
+        _raw("gp:3", "last day of the window, this review must be kept", at=datetime(2026, 10, 25, 23, 59)),
+        _raw("gp:4", "too new to keep, this review is outside the window", at=datetime(2026, 10, 26, 0, 0)),
     ]
-    assert [r.text for r in normalize(raws, SINCE, UNTIL, SALT)] == ["first day of the window", "last day of the window"]
+    assert [r.text[:9] for r in normalize(raws, SINCE, UNTIL, SALT)] == ["first day", "last day "]
 
 
 def test_dedups_by_id_and_text():
     raws = [
-        _raw("gp:1", "Withdrawal is stuck for 5 days!!"),
-        _raw("gp:1", "Withdrawal is stuck for 5 days!!"),  # same id
-        _raw("gp:2", "withdrawal  is stuck for 5 days"),  # same normalized text, other id (copy-paste)
-        _raw("gp:3", "charts are slow during market open"),
+        _raw("gp:1", "Withdrawal is stuck for 5 days, please fix it!!"),
+        _raw("gp:1", "Withdrawal is stuck for 5 days, please fix it!!"),  # same id
+        _raw("gp:2", "withdrawal  is stuck for 5 days please fix it"),  # same normalized text, other id
+        _raw("gp:3", "charts are very slow during market open every day"),
     ]
     out = normalize(raws, SINCE, UNTIL, SALT)
-    assert [r.text for r in out] == ["Withdrawal is stuck for 5 days!!", "charts are slow during market open"]
+    assert [r.text for r in out] == [
+        "Withdrawal is stuck for 5 days, please fix it!!",
+        "charts are very slow during market open every day",
+    ]
 
 
-def test_short_noise_duplicates_are_kept_for_counts():
-    raws = [_raw(f"gp:{i}", "Good app", rating=5) for i in range(3)]
-    assert len(normalize(raws, SINCE, UNTIL, SALT)) == 3
+@pytest.mark.parametrize(
+    "text,kept",
+    [
+        ("Good app", False),
+        ("nice app for beginners, very easy", False),  # 6 words
+        ("app is good but charges are high", False),  # 7 words
+        ("app is good but the charges are high", True),  # 8 words
+        ("Great app 👍👍👍 👍 👍 👍 👍 👍", False),  # emoji are not words
+        ("पैसा नहीं आया अभी तक मेरा withdrawal अटका है", True),  # 8 Devanagari/Latin words
+    ],
+)
+def test_keeps_only_reviews_with_at_least_8_words(text, kept):
+    assert len(normalize([_raw("gp:1", text)], SINCE, UNTIL, SALT)) == int(kept)
+
+
+def test_min_words_is_configurable():
+    assert len(normalize([_raw("gp:1", "app is good but charges high")], SINCE, UNTIL, SALT, min_words=3)) == 1
+
+
+def test_emoji_removed_from_text_and_title():
+    raws = [_raw("gp:1", "Great app 👍👍 for SIP investing, very easy to use daily 🙏🏻❤️",
+                 title="Love it 😍")]
+    (r,) = normalize(raws, SINCE, UNTIL, SALT)
+    assert r.text == "Great app for SIP investing, very easy to use daily"
+    assert r.title == "Love it"
+
+
+def test_emoji_removal_keeps_rupee_and_punctuation():
+    (r,) = normalize([_raw("gp:1", "brokerage of ₹20 per order is too high — please reduce it 🙄")],
+                     SINCE, UNTIL, SALT)
+    assert r.text == "brokerage of ₹20 per order is too high — please reduce it"
 
 
 def test_user_name_never_in_output():
-    raws = [_raw("gp:1", "Rahul Sharma here, withdrawal is stuck", user="Rahul Sharma")]
-    for r in normalize(raws, SINCE, UNTIL, SALT):
+    raws = [_raw("gp:1", "Rahul Sharma here, my withdrawal is stuck since last week", user="Rahul Sharma")]
+    out = normalize(raws, SINCE, UNTIL, SALT)
+    assert out
+    for r in out:
         assert all("Rahul" not in str(field) for field in astuple(r))
 
 
 def test_text_is_scrubbed():
-    raws = [_raw("gp:1", "call me on 9876543210, mail a.b@gmail.com", title="Hi Rahul from support")]
+    raws = [_raw("gp:1", "please call me on 9876543210, or mail a.b@gmail.com today",
+                 title="Hi Rahul from support")]
     (r,) = normalize(raws, SINCE, UNTIL, SALT)
-    assert r.text == "call me on [phone], mail [email]"
+    assert r.text == "please call me on [phone], or mail [email] today"
     assert r.title == "Hi [name] from support"
 
 
 def test_unicode_and_whitespace_normalized():
-    (r,) = normalize([_raw("gp:1", "  café   app\n\nis   slow  ")], SINCE, UNTIL, SALT)
-    assert r.text == "café app is slow"
+    raw = "  café   app\n\nis   slow  after the latest update  "
+    (r,) = normalize([_raw("gp:1", raw)], SINCE, UNTIL, SALT)
+    assert r.text == "café app is slow after the latest update"
 
 
 def test_reviews_get_language_tag():
     raws = [_raw("gp:1", "The withdrawal has been stuck for five days and support is not replying"),
-            _raw("gp:2", "पैसा नहीं आया अभी तक withdrawal")]
+            _raw("gp:2", "पैसा नहीं आया अभी तक मेरा withdrawal अटका है")]
     assert [r.lang for r in normalize(raws, SINCE, UNTIL, SALT)] == ["en", "hi"]
 
 
-@pytest.mark.parametrize("text", ["👍👍", "good", "nice app", "5 5 5", "!!! ???", ""])
+@pytest.mark.parametrize("text", ["👍👍", "good", "nice app", "withdrawal is stuck for days", "5 5 5 5 5 5 5 5",
+                                  "!!! ???", ""])
 def test_is_noise_true(text):
     assert is_noise(text)
 
 
-@pytest.mark.parametrize("text", ["withdrawal is stuck for days", "पैसा नहीं आया अभी"])
+@pytest.mark.parametrize("text", [LONG, "पैसा नहीं आया अभी तक मेरा withdrawal अटका है"])
 def test_is_noise_false(text):
     assert not is_noise(text)
 

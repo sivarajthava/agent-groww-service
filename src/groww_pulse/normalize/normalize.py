@@ -16,10 +16,24 @@ DetectorFactory.seed = 0  # langdetect is randomised; a fixed seed makes tags re
 SOURCE = "play_store"
 HINGLISH_SHARE = 0.2  # Latin-script text with at least this share of Hinglish words is tagged "hi-Latn"
 SHORT_WORDS = 12  # below this, langdetect is unreliable: a non-English verdict on Latin text becomes "en"
+MIN_WORDS = 8  # reviews with fewer words are dropped: too short to cluster or quote
+
+# Emoji glue that isn't category "So": variation selectors, zero-width joiner, keycap, skin-tone modifiers.
+_EMOJI_PARTS = {0xFE0E, 0xFE0F, 0x200D, 0x20E3, *range(0x1F3FB, 0x1F400)}
+
+
+def remove_emoji(text: str) -> str:
+    """Drop emoji and other pictographic symbols (Unicode "So"); letters, digits, ₹ and punctuation stay."""
+    return "".join(c for c in text if unicodedata.category(c) != "So" and ord(c) not in _EMOJI_PARTS)
 
 
 def _clean(text: str) -> str:
-    return " ".join(unicodedata.normalize("NFC", text).split())
+    return " ".join(remove_emoji(unicodedata.normalize("NFC", text)).split())
+
+
+def word_count(text: str) -> int:
+    """Whitespace-separated tokens containing a letter or digit (works for Devanagari too)."""
+    return sum(any(c.isalnum() for c in tok) for tok in text.split())
 
 
 def _text_key(text: str) -> str:
@@ -27,9 +41,9 @@ def _text_key(text: str) -> str:
     return " ".join(re.sub(r"[^\w\s]", " ", text.lower()).split())
 
 
-def is_noise(text: str) -> bool:
-    """Fewer than 3 word tokens, or no letters at all (emoji, digits, punctuation)."""
-    return len(re.findall(r"\w+", text)) < 3 or not any(c.isalpha() for c in text)
+def is_noise(text: str, min_words: int = MIN_WORDS) -> bool:
+    """Fewer than `min_words` words, or no letters at all (emoji, digits, punctuation)."""
+    return word_count(text) < min_words or not any(c.isalpha() for c in text)
 
 
 def detect_lang(text: str) -> str:
@@ -53,11 +67,12 @@ def detect_lang(text: str) -> str:
     return lang
 
 
-def normalize(raw: Iterable[RawReview], since: date, until: date, salt: str) -> list[Review]:
-    """Scrubbed, deduplicated reviews inside [since, until]. User names are never copied.
+def normalize(
+    raw: Iterable[RawReview], since: date, until: date, salt: str, min_words: int = MIN_WORDS
+) -> list[Review]:
+    """Scrubbed, emoji-free, deduplicated reviews inside [since, until] with at least `min_words` words.
 
-    Text dedup applies only to non-noise reviews: identical short reviews ("Good app") are real,
-    separate ratings and are kept for counts.
+    User names are never copied.
     """
     out: list[Review] = []
     seen_ids: set[str] = set()
@@ -70,11 +85,10 @@ def normalize(raw: Iterable[RawReview], since: date, until: date, salt: str) -> 
         if rid in seen_ids:
             continue
         text = scrub_text(_clean(r.text))
-        if not is_noise(text):
-            key = _text_key(text)
-            if key in seen_texts:
-                continue
-            seen_texts.add(key)
+        key = _text_key(text)
+        if is_noise(text, min_words) or key in seen_texts:
+            continue
+        seen_texts.add(key)
         seen_ids.add(rid)
         title = scrub_text(_clean(r.title)) if r.title else None
         out.append(
