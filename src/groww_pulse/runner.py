@@ -14,6 +14,8 @@ from datetime import date
 from pathlib import Path
 from typing import Literal
 
+import groq
+
 from groww_pulse.config import Settings
 from groww_pulse.ingest.base import ReviewSource
 from groww_pulse.llm import LLMClient, LLMContractError
@@ -224,6 +226,8 @@ def run_stage(ctx: RunContext, stage: str) -> StageResult:
             return StageResult(stage, True, _ints(res))
     except (StageError, NotEnoughQuotes, ValidationFailed, LLMContractError) as e:
         return StageResult(stage, False, error=f"{stage}: {e}")
+    except groq.GroqError as e:  # retries and the fallback model are exhausted, or no API key
+        return StageResult(stage, False, error=f"{stage}: llm_unavailable ({type(e).__name__})")
 
 
 def run_pipeline(

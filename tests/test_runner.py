@@ -232,3 +232,12 @@ def test_low_volume_widens_window_and_flags(settings, server):
     md = result.pulse_path.read_text(encoding="utf-8")
     assert md.count('" (★') == 3
     assert set(run_json(settings)["flags"]) >= {"low_volume", "window_widened", "few_themes"}
+
+
+def test_llm_unavailable_fails_without_publishing(settings, server):
+    import groq
+
+    result = run(settings, server, llm=FakeLLM([groq.GroqError("The api_key client option must be set")]))
+    assert result.status == "failed" and result.error.startswith("themes: llm_unavailable")
+    assert "api_key" not in result.error  # error kind only
+    assert server.docs == {} and server.drafts == {}
