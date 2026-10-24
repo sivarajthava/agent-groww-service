@@ -29,9 +29,21 @@ _RULES = (
     (_DIGIT_RUN, "[id]"),
 )
 
+# Common romanised Hindi (Hinglish) words. Reviews often capitalise them; normalize uses them to tag Hinglish.
+HINGLISH_WORDS = frozenset(
+    """
+    hai hain ho hota hoti hote kiya kiye karo kare karna krna krne kar kya kyu kyun kab ab abhi jo jab tab sab
+    kuch dena diya lena liya tak paisa paise rupay rupaye ke ki ka ko se mein nahi nhi nahin bhi aur ye yeh
+    wo woh bahut bhut bohot bhot accha achha achcha acha bhai ji ek mera meri mere apna apni aap aapka aapki
+    hum ham tum iska iski uska uski inka unka liye wala wali raha rahi rahe gaya gayi jata jati chahiye
+    chaiye din saal baad pehle phir fir lekin par pe toh jaldi dikkat samasya sahi bekar faltu bakwas
+    thik theek tha thi behtar bas mat maja mja kaise kaisa karte karta
+    """.split()
+)
+
 # The small NER model tags brands, finance terms and review words as PERSON ("Groww", "Good App");
 # an entity containing any of these words is not a name.
-NOT_NAMES = frozenset(
+NOT_NAMES = HINGLISH_WORDS | frozenset(
     """
     groww zerodha upstox angel angelone paytm phonepe gpay google play store playstore kite coin dhan fyers
     indmoney kuvera smallcase sbi hdfc icici axis kotak yes nse bse sebi rbi amc nifty sensex banknifty finnifty
@@ -42,14 +54,6 @@ NOT_NAMES = frozenset(
     experience platform investment investing investor beginner beginners ok okay okk fine cool wow happy
     grow interface smooth mode wallet chart charts primary smart rest avg overall middle class scalper
     thankyou thanku update features feature option options order orders account money withdrawal
-    """.split()
-    # Common romanised Hindi (Hinglish) words, which reviews often capitalise.
-    + """
-    hai hain ho hota hoti hote kiya kiye karo kare karna krna kar kya kyu kyun kab ab abhi jo jab tab sab
-    kuch dena diya lena liya tak paisa paise rupay rupaye ke ki ka ko se me mein nahi nhi nahin bhi aur ye yeh
-    wo woh bahut bhut bohot bhot accha achha achcha acha bhai ji ek mera meri mere apna apni aap aapka aapki
-    hum ham tum iska iski uska uski inka unka liye wala wali raha rahi rahe gaya gayi jata jati chahiye
-    chaiye din saal baad pehle phir fir lekin par pe toh hi jaldi dikkat samasya sahi bekar faltu bakwas
     """.split()
 )
 
